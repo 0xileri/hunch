@@ -19,6 +19,21 @@
     $(id).innerHTML = html
   }
 
+  const themeButton = $('btn-theme')
+  function updateThemeLabel() {
+    const dark = document.documentElement.dataset.theme !== 'light'
+    themeButton.textContent = dark ? 'Light mode' : 'Dark mode'
+    themeButton.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme')
+    document.querySelector('meta[name="theme-color"]').content = dark ? '#07080a' : '#f6f5f1'
+  }
+  themeButton.addEventListener('click', () => {
+    const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'
+    document.documentElement.dataset.theme = theme
+    try { localStorage.setItem('hunch-theme', theme) } catch {}
+    updateThemeLabel()
+  })
+  updateThemeLabel()
+
   let S = null
   let focus = null
   let followLatest = true
@@ -177,6 +192,14 @@
 )
   }
 
+  function fuelGauge(f) {
+    const run = S.budget.runway
+    const thr = f.policy.whenRunwayBelow
+    if (run === null || run === undefined) return ''
+    const max = Math.max(thr * 2, run, 1)
+    return `<div class="fuelgauge"><div class="fg-bar"><i class="${run < thr ? 'low' : ''}" style="width:${Math.min(100, (run / max) * 100)}%"></i><span class="fg-tick" style="left:${(thr / max) * 100}%"></span></div><div class="fg-labels"><span>runway <b>${run}</b></span><span>refuels below <b>${thr}</b></span></div></div>`
+  }
+
   function fuelHtml() {
     const f = S.fuel
     if (!f || !f.configured) return ''
@@ -190,6 +213,7 @@
       <div class="k">Treasury · Robinhood Chain</div>
       <div class="fuelrow"><a href="${esc(f.treasuryUrl)}" target="_blank" rel="noopener" class="mono">${short(t && t.address)}</a><span class="mono">${t ? `${t.usdg.toFixed(2)} USDG · ${t.eth.toFixed(5)} ETH` : 'not read yet'}</span></div>
       <div class="muted" style="font-size:.78rem">${f.enabled ? `Refuels ${f.policy.usdg} USDG when the runway drops below ${f.policy.whenRunwayBelow} investigations, only under $${f.policy.maxPrice}/CREDIT, at most ${f.policy.maxUsdgPerDay} USDG a day.` : 'Automatic refuel is off.'}</div>
+      ${fuelGauge(f)}
       ${lastHtml}
       <button class="small" data-fuel ${f.refueling ? 'disabled' : ''}>${f.refueling ? 'Refueling…' : 'Refuel now'}</button>
     </div>`
@@ -203,6 +227,22 @@
     ['severity', 'Severity'],
     ['novelty', 'Novelty'],
   ]
+
+  /** A 270° gauge for the signal score, with the watch and investigate thresholds ticked. */
+  function gauge(score, action) {
+    const R = 42
+    const C = 2 * Math.PI * R
+    const len = C * 0.75
+    const off = len * (1 - Math.max(0, Math.min(1, score)))
+    const tick = (t, cls) => {
+      const a = ((135 + 270 * t) * Math.PI) / 180
+      const p = (r) => `${(50 + r * Math.cos(a)).toFixed(2)} ${(50 + r * Math.sin(a)).toFixed(2)}`
+      return `<path class="tick ${cls}" d="M${p(33)}L${p(49)}"/>`
+    }
+    return `<div class="gauge ${action}" style="--len:${len.toFixed(2)};--off:${off.toFixed(2)}">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="${R}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" transform="rotate(135 50 50)"/><circle class="val" cx="50" cy="50" r="${R}" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" transform="rotate(135 50 50)"/>${tick(S.policy.signal.watchAt, 'w')}${tick(S.policy.signal.investigateAt, 'i')}</svg>
+      <div class="gv"><b>${score.toFixed(2)}</b><span>signal score</span></div></div>`
+  }
 
   function renderSignal() {
     const signals = S.signals
@@ -227,12 +267,12 @@
     set('signal', `
       <h2>Emerging signal <span class="badge ${esc(sig.state)}">${esc(sig.state)}</span>${sig.demo ? '<span class="badge warn">demo fixture</span>' : ''}<span class="right mono" style="font-size:.75rem">${esc(sig.id)}</span></h2>
       ${tabs}
-      <p class="claim">${esc(sig.claim)}</p>
+      <div class="sig-head"><p class="claim">${esc(sig.claim)}</p>${gauge(d.score, d.action)}</div>
       <div class="stats">
         <div class="stat"><div class="v">${m.mentions}</div><div class="l">mentions</div></div>
         <div class="stat"><div class="v">${m.uniqueSources}</div><div class="l">independent sources</div></div>
         <div class="stat"><div class="v">${m.last15}<span class="muted" style="font-size:.9rem"> / ${m.prev15}</span></div><div class="l">last 15 min / previous 15</div></div>
-        <div class="stat"><div class="v" style="color:var(--${d.action === 'INVESTIGATE' ? 'accent' : d.action === 'WATCH' ? 'warn' : 'idle'})">${d.score.toFixed(2)}</div><div class="l">signal score</div></div>
+        <div class="stat"><div class="v">${m.meanSimilarity}</div><div class="l">claim similarity</div></div>
       </div>
       <div class="decision ${d.action}">
         <div class="act">${d.action}</div>
@@ -273,6 +313,20 @@
     const workers = inv.workers
       .map((w) => `<li><span class="pip ${w.status}"></span><div><div class="who">${esc(w.id)} <span class="badge ${w.status}">${w.status}</span></div><div class="role">${esc(w.label || w.model)} · ${esc(w.role)}${w.latencyMs ? ` · ${(w.latencyMs / 1000).toFixed(1)}s` : ''}${w.error ? ` · <span style="color:var(--bad)">${esc(w.error)}</span>` : ''}</div>${grade(w.grade)}</div><div class="money">bid ${usd(w.estimateUsd, 4)}<br><b>${w.costUsd ? usd(w.costUsd, 6) : '—'}</b></div></li>`)
       .join('')
+    const [tr, ch, ve] = inv.workers
+    const st = (s) => (s === 'done' ? 'done' : s === 'running' ? 'run' : s === 'failed' ? 'fail' : s === 'skipped' ? 'skip' : 'wait')
+    const docsOk = inv.evidence.filter((e) => e.ok).length
+    const evState = inv.evidence.length ? 'done' : tr && tr.status === 'done' && ch && ch.status === 'waiting' ? 'run' : 'wait'
+    const endState = inv.status === 'complete' ? 'done' : inv.status === 'rejected' || inv.status === 'failed' ? 'fail' : 'wait'
+    const nodes = [
+      ['Funded', `up to ${usd(inv.maxBudgetUsd, 2)}`, 'done'],
+      ['Source-tracer', tr ? tr.label || tr.model : '', st(tr && tr.status)],
+      ['Evidence', `${docsOk} docs · $0`, evState],
+      ['Cross-checker', ch ? ch.label || ch.model : '', st(ch && ch.status)],
+      ['Verifier', ve ? ve.label || ve.model : '', st(ve && ve.status)],
+      [inv.status === 'rejected' ? 'Rejected' : inv.status === 'failed' ? 'Stopped' : 'Accepted', a ? a.status.replace('_', ' ') : inv.status, endState],
+    ]
+    const pipeline = `<ol class="pipe">${nodes.map(([l, s, state]) => `<li class="${state}"><span class="node"></span><b>${esc(l)}</b><span>${esc(s)}</span></li>`).join('')}</ol>`
     const auctions = (inv.auctions || []).filter((a) => a.role !== 'verifier')
     const auctionHtml = auctions.length
       ? `<div class="auctions">${auctions.map((a) => `<div class="auction"><h3>${esc(a.role)} auction</h3><table><thead><tr><th>Worker</th><th class="num">Bid</th><th class="num">Reputation</th><th class="num">Quality/$</th></tr></thead><tbody>${[...a.bids].sort((x, y) => (y.utility ?? -1) - (x.utility ?? -1)).map((b) => `<tr class="${b.bidder === a.winner ? 'won' : ''}${b.eligible ? '' : ' out'}"><td>${b.bidder === a.winner ? '✓ ' : ''}${esc(b.label)}</td><td class="num">${usd(b.bidUsd, 4)}</td><td class="num">${b.reputation.toFixed(2)} <span class="muted">(${b.jobs})</span></td><td class="num">${b.eligible ? b.utility.toLocaleString() : 'below floor'}</td></tr>`).join('')}</tbody></table><p class="muted" style="font-size:.76rem;margin:4px 0 0">${esc(a.reason)}</p></div>`).join('')}</div>`
@@ -310,6 +364,7 @@
         <span>balance <b>${usd(inv.balanceBefore, 6)}</b> → <b>${usd(inv.balanceAfter, 6)}</b>${delta !== null ? ` <span class="muted">(Δ ${usd(delta, 6)})</span>` : ''}</span>
       </div>
       <div class="bar" style="height:10px;position:relative;margin-bottom:14px" title="spent vs allocation"><i style="width:${spendPct}%"></i><span style="position:absolute;top:-3px;left:${estPct}%;width:2px;height:16px;background:var(--muted)" title="planned worst case"></span></div>
+      ${pipeline}
       ${auctionHtml}
       <ul class="workers">${workers}</ul>
       ${artifact}
@@ -320,8 +375,9 @@
 
   // ── log, spend, background, sources ─────────────────────────────────────────────────────────
   function renderLog() {
-    set('log', `<h2>Agent activity <span class="right muted" style="text-transform:none;letter-spacing:0">${S.stats.scans} scans · ${S.stats.itemsRead} items read</span></h2>
-      <ul class="log">${S.log.map((l) => `<li><div><span class="t">${time(l.at)}</span> <span class="a ${l.actor}">${l.actor}</span></div><div class="msg">${esc(l.msg)}</div></li>`).join('')}</ul>`
+    set('log', `<div class="term-bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="term-title">hunch — agent.log</span><span class="term-meta">${S.stats.scans} scans · ${S.stats.itemsRead} items</span></div>
+      <ul class="log">${S.log.map((l) => `<li><div><span class="t">${time(l.at)}</span> <span class="a ${l.actor}">${l.actor}</span></div><div class="msg">${esc(l.msg)}</div></li>`).join('')}</ul>
+      <div class="term-prompt"><span class="caret">$</span> tail -f agent.log<span class="cursor"></span></div>`
 )
   }
 
@@ -365,15 +421,16 @@
       el.textContent = format(value)
       return
     }
+    if (el._frame) cancelAnimationFrame(el._frame)
     const start = performance.now()
     const dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 900
     const step = (now) => {
       const t = dur ? Math.min(1, (now - start) / dur) : 1
       const eased = 1 - Math.pow(1 - t, 3)
       el.textContent = format(from + (value - from) * eased)
-      if (t < 1) requestAnimationFrame(step)
+      if (t < 1) el._frame = requestAnimationFrame(step)
     }
-    requestAnimationFrame(step)
+    el._frame = requestAnimationFrame(step)
   }
 
   function renderKpis() {
@@ -395,9 +452,34 @@
     if (chip && confirmed[0]) chip.textContent = `+$${Number(confirmed[0].activatedUsd).toFixed(2)} refueled`
   }
 
+  // ── live ticker: the latest moves, swapped in only between loops so it never jumps ─────────────
+  let tickerNext = null
+  function renderTicker() {
+    const track = $('ticker')
+    if (!track) return
+    const html = S.log.slice(0, 14).map((l) => `<span class="tk"><i class="a ${l.actor}">${l.actor}</i>${esc(l.msg.length > 120 ? `${l.msg.slice(0, 119)}…` : l.msg)}</span>`).join('')
+    if (!track.dataset.html) applyTicker(track, html)
+    else if (track.dataset.html !== html) tickerNext = html
+  }
+  function applyTicker(track, html) {
+    track.dataset.html = html
+    track.innerHTML = html + html
+    track.style.animationDuration = `${Math.max(30, track.scrollWidth / 2 / 70)}s`
+  }
+  const tickerTrack = $('ticker')
+  if (tickerTrack) {
+    tickerTrack.addEventListener('animationiteration', () => {
+      if (tickerNext) {
+        applyTicker(tickerTrack, tickerNext)
+        tickerNext = null
+      }
+    })
+  }
+
   function render() {
     if (!S) return
     renderKpis()
+    renderTicker()
     renderPhase()
     renderWallet()
     renderSignal()
@@ -409,13 +491,20 @@
     renderSources()
   }
 
+  let refreshing = false
   async function refresh() {
+    if (refreshing) return
+    refreshing = true
     try {
       const res = await fetch('/api/state', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Live data unavailable')
       S = await res.json()
       render()
     } catch {
       $('phase').textContent = 'OFFLINE'
+      $('phase').className = 'phase bad'
+    } finally {
+      refreshing = false
     }
   }
 
@@ -436,11 +525,28 @@
   }
   document.addEventListener('pointermove', (e) => {
     const card = e.target.closest && e.target.closest('.card')
-    if (!card) return
+    if (!card || !matchMedia('(hover: hover)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const r = card.getBoundingClientRect()
     card.style.setProperty('--mx', `${e.clientX - r.left}px`)
     card.style.setProperty('--my', `${e.clientY - r.top}px`)
   }, { passive: true })
+
+  // The hero art leans toward the cursor.
+  const hero = document.querySelector('.hero')
+  const art = document.querySelector('.hero-art')
+  if (hero && art && matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)').matches) {
+    hero.addEventListener('pointermove', (e) => {
+      const r = art.getBoundingClientRect()
+      const x = (e.clientX - (r.left + r.width / 2)) / r.width
+      const y = (e.clientY - (r.top + r.height / 2)) / r.height
+      art.style.setProperty('--ry', `${(x * 16).toFixed(2)}deg`)
+      art.style.setProperty('--rx', `${(-y * 16).toFixed(2)}deg`)
+    })
+    hero.addEventListener('pointerleave', () => {
+      art.style.setProperty('--rx', '0deg')
+      art.style.setProperty('--ry', '0deg')
+    })
+  }
 
   refresh()
   setInterval(refresh, 1500)

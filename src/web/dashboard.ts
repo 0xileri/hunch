@@ -1,6 +1,7 @@
 // The one-page dashboard. The page is a shell; app.js fills it from /api/state every second and a
 // half, so everything on screen is the agent's live state.
 import { readFileSync } from 'node:fs'
+import { addressUrl, treasuryAccount } from '../chain/refuel.js'
 import { MISSION, PUBLIC_URL, REPO_URL } from '../config.js'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -72,9 +73,11 @@ export function dashboardPage(): string {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>try { document.documentElement.dataset.theme = localStorage.getItem('hunch-theme') || 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }</script>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+<a class="skip-link" href="#signal">Skip to live dashboard</a>
 <div class="backdrop" aria-hidden="true"><div class="gridlines"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
 
 <header class="nav">
@@ -84,12 +87,14 @@ export function dashboardPage(): string {
       <a href="#signal">Signal</a><a href="#investigation">Investigation</a><a href="#market">Market</a><a href="#wallet">Fuel</a><a href="#log">Log</a>
     </nav>
     <div class="nav-right">
+      <button class="theme-toggle" id="btn-theme" type="button" aria-label="Switch to light theme">Light mode</button>
       <div class="phase" id="phase" aria-live="polite">…</div>
       ${REPO_URL ? `<a class="gh" href="${esc(REPO_URL)}" aria-label="Code on GitHub">${icon('<path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>')}</a>` : ''}
     </div>
   </div>
 </header>
 
+<main>
 <section class="hero">
   <div class="hero-copy">
     <div class="eyebrow"><span class="live-dot"></span>Live on Orbio · refuels on-chain</div>
@@ -114,6 +119,8 @@ export function dashboardPage(): string {
   </div>
 </section>
 
+<div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
+
 <section class="kpis reveal" aria-label="Live numbers">
   ${KPIS.map((k) => `<div class="kpi"><span class="kpi-label">${k.label}</span><strong class="kpi-value" id="kpi-${k.id}">—</strong><span class="kpi-hint" id="kpi-${k.id}-hint">${k.hint}</span></div>`).join('')}
 </section>
@@ -122,32 +129,46 @@ export function dashboardPage(): string {
   ${STEPS.map((s) => `<div class="step ${s.tone}"><div class="step-top"><span class="step-icon">${s.icon}</span><span class="step-n">${s.n}</span></div><h3>${s.title}</h3><p>${s.text}</p><span class="cost ${s.tone}">${s.cost}</span></div>`).join('')}
 </section>
 
+<div class="console-head reveal">
+  <span class="eyebrow"><span class="live-dot"></span>Live console</span>
+  <h2>Watch it decide.</h2>
+  <p>Everything below is the agent's real state, refreshed every second and a half: the hunch it is watching, the proof it paid for, its budget and fuel, and every move it made.</p>
+</div>
+
 <nav class="machine reveal" id="machine" aria-label="Agent state"></nav>
 
 <div class="grid">
   <div class="col">
-    <section class="card reveal" id="signal"></section>
-    <section class="card reveal" id="investigation"></section>
+    <section class="card reveal" id="signal"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
+    <section class="card reveal" id="investigation"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
   </div>
   <div class="col side">
-    <section class="card reveal" id="wallet"></section>
-    <section class="card reveal" id="log"></section>
+    <section class="card reveal" id="wallet"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
+    <section class="card reveal term" id="log"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
   </div>
 </div>
 
 <div class="grid3">
-  <section class="card reveal" id="spend"></section>
-  <section class="card reveal" id="market"></section>
-  <section class="card reveal" id="background"></section>
-  <section class="card reveal" id="sources"></section>
+  <section class="card reveal" id="spend"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
+  <section class="card reveal" id="market"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
+  <section class="card reveal" id="background"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
+  <section class="card reveal" id="sources"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
 </div>
 
+</main>
 <footer>
   <div class="foot-inner">
-    <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
-    <p>Runs on its own <a href="https://orbio.so">Orbio</a> key · embeddings: all-MiniLM-L6-v2, locally · fuel: <a href="https://www.orbio.so/protocol/agents">CREDIT</a> on Robinhood Chain · built for Orbio Build Week${REPO_URL ? ` · <a href="${esc(REPO_URL)}">code</a>` : ''}</p>
+    <div class="foot-brand">
+      <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
+      <p>Free hunches. Paid proof.<br>An agent on its own Orbio key that decides when information is worth paying for.</p>
+    </div>
+    <div class="foot-col"><h4>Explore</h4><a href="#signal">Live console</a><a href="/demo">The demo fixture</a><a href="/api/status">Status API (JSON)</a></div>
+    <div class="foot-col"><h4>Proof</h4>${treasuryAccount() ? `<a href="${esc(addressUrl(treasuryAccount()!.address))}">Treasury on Blockscout</a>` : ''}${REPO_URL ? `<a href="${esc(REPO_URL)}">Source on GitHub</a>` : ''}<a href="https://www.orbio.so/protocol/agents">Orbio's CREDIT protocol</a></div>
+    <div class="foot-col"><h4>Built with</h4><span>Orbio gateway and MCP</span><span>Robinhood Chain</span><span>all-MiniLM-L6-v2, locally</span></div>
   </div>
+  <div class="foot-base">Built for Orbio Build Week · every balance and cost on this page is real</div>
 </footer>
+<noscript><p class="noscript-note">Enable JavaScript to see the live dashboard and use agent controls.</p></noscript>
 <div class="toast" id="toast" role="status"></div>
 <script src="/app.js"></script>
 </body>
