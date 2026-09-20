@@ -207,7 +207,7 @@ The watcher reads the fixture's feeds over HTTP like any other source, and the c
 | Refuels: real USDG, real on-chain `buyAndActivate`, confirmed in `orbio_get_balance` | The agent "earning" its fuel: the treasury is funded by the operator |
 | Four live public RSS feeds, scanned every 15 minutes and on "Scan now" | "Real-time" monitoring: it scans on a schedule and on demand |
 | Local embeddings, clustering and scores | Worker "bids" are the agent's cost estimates at real prices; no worker is paid |
-| The verifier's acceptance checks (code, not a model) | Self-refueling (not built) |
+| The verifier's acceptance checks (code, not a model) | The artifact as the truth: it reports a status, a confidence and its unknowns |
 
 ## Running it
 
