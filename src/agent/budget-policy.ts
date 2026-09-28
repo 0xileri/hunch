@@ -3,10 +3,13 @@
 // why the agent did or didn't spend.
 import { MISSION, POLICY, SIGNAL } from '../config.js'
 import { missionBudgetUsd } from '../core/state.js'
-import type { Action, Check, ClusterMetrics, SignalCluster } from '../core/types.js'
+import { budgetOf } from '../core/watches.js'
+import type { Action, Check, ClusterMetrics, SignalCluster, Watch } from '../core/types.js'
 
 export interface PolicyInput {
   cluster: SignalCluster
+  /** The watch whose budget would pay for this, null when nothing on mission matched. */
+  watch: Watch | null
   score: number
   metrics: ClusterMetrics
   /** Worst-case cost of the planned investigation at the gateway's prices; null if prices are unknown. */
@@ -36,8 +39,9 @@ export const budgetLimits = (missionSpentUsd: number, budgetUsd = missionBudgetU
 }
 
 export function decide(input: PolicyInput): PolicyResult {
-  const { cluster, score, metrics, estimateUsd } = input
-  const limits = budgetLimits(input.missionSpentUsd)
+  const { cluster, score, metrics, estimateUsd, watch } = input
+  // A paid watch spends what was paid into it; the house spends the operator's mission budget.
+  const limits = watch && !watch.house ? budgetOf(watch) : budgetLimits(input.missionSpentUsd)
   const allocation = Math.min(limits.available, input.balanceUsd ?? 0)
   const cooldown = metrics.similarTo && metrics.similarTo.similarity >= POLICY.cooldownSimilarity ? metrics.similarTo : null
 
@@ -45,7 +49,9 @@ export function decide(input: PolicyInput): PolicyResult {
     {
       label: 'On mission',
       ok: metrics.onMission,
-      detail: metrics.onMission ? `mentions ${metrics.missionTerms.map((t) => `"${t}"`).join(', ')}` : `no mention of ${MISSION.entity}`,
+      detail:
+        metrics.onMission ? `${watch ? `${watch.entity}: ` : ''}mentions ${metrics.missionTerms.map((t) => `"${t}"`).join(', ')}`
+        : `no mention of ${watch?.entity ?? MISSION.entity}`,
     },
     {
       label: 'Signal score',
@@ -89,7 +95,9 @@ export function decide(input: PolicyInput): PolicyResult {
   ]
 
   const failed = (label: string) => !checks.find((c) => c.label === label)!.ok
-  if (!metrics.onMission) return { action: 'IGNORE', reason: `off mission: no mention of ${MISSION.entity}`, checks, budgetUsd: 0 }
+  if (!metrics.onMission || !watch) {
+    return { action: 'IGNORE', reason: `off mission: no watch covers this claim`, checks, budgetUsd: 0 }
+  }
   if (score < SIGNAL.watchAt) return { action: 'IGNORE', reason: `score ${score.toFixed(2)} is below ${SIGNAL.watchAt}: noise, spend nothing`, checks, budgetUsd: 0 }
   if (score < SIGNAL.investigateAt) {
     return { action: 'WATCH', reason: `score ${score.toFixed(2)} is worth watching but not paying for yet`, checks, budgetUsd: 0 }

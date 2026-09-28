@@ -35,6 +35,8 @@ export function measure(
   items: Map<string, SourceItem>,
   clusters: SignalCluster[],
   now = Date.now(),
+  /** Terms of the watch this cluster is being scored for; the house mission's by default. */
+  terms: string[] = MISSION.terms,
 ): { metrics: ClusterMetrics; factors: Factors; score: number } {
   const members = cluster.itemIds.map((id) => items.get(id)).filter((i): i is SourceItem => !!i)
   const times = members.map(timeOf).sort((a, b) => a - b)
@@ -50,7 +52,7 @@ export function measure(
   const severityTerms = [...new Set(severities.flatMap((s) => s.terms).sort((a, b) => b.weight - a.weight).map((t) => t.term))]
 
   const haystack = members.map((m) => `${m.title} ${m.text}`.toLowerCase()).join('\n')
-  const missionTerms = MISSION.terms.filter((term) => haystack.includes(term))
+  const missionTerms = terms.filter((term) => haystack.includes(term))
 
   // Novelty: how different this claim is from anything already paid for recently.
   let similarTo: ClusterMetrics['similarTo'] = null

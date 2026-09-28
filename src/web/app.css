@@ -297,7 +297,8 @@ details summary::-webkit-details-marker { display: none; }
 .a.COORDINATOR, .a.BUDGET { color: var(--accent); }
 .a.KEY { color: var(--warn); }
 .a.WORKER, .a.VERIFIER { color: var(--text); }
-.a.SPEND, .a.BALANCE, .a.FUEL { color: var(--ok); }
+.a.SPEND, .a.BALANCE, .a.FUEL, .a.PAY { color: var(--ok); }
+.a.WATCH { color: var(--accent-2); }
 .a.MARKET { color: var(--info); }
 .a.ERROR { color: var(--bad); }
 .a.DEMO, .a.AGENT { color: var(--muted); }
@@ -473,4 +474,40 @@ footer { margin-top: 64px; border-top: 1px solid var(--line); background: color-
 @media (hover: none) {
   .card:hover, .step:hover, .card.reveal.in:hover { transform: none; }
   .card::before { display: none; }
+}
+
+/* ── the watch page: buying a watch ─────────────────────────────────────────────────────────── */
+.watch-page .wrap { max-width: 1120px; margin: 0 auto; padding: 96px 20px 40px; }
+.w-hero { text-align: center; padding: 26px 0 34px; }
+.w-hero h1 { font-size: clamp(2.4rem, 6vw, 4rem); line-height: 1.02; letter-spacing: -0.04em; margin: 14px 0 16px; }
+.w-hero .lede { max-width: 62ch; margin: 0 auto; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+.w-how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 8px 0 26px; }
+.w-step { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 18px 20px; }
+.w-step .n { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+.w-step h3 { margin: 8px 0 6px; font-size: 1rem; }
+.w-step p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.w-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
+.watch-page form { display: grid; gap: 16px; margin-top: 6px; }
+.watch-page label { display: grid; gap: 6px; font-size: 0.9rem; font-weight: 500; }
+.watch-page .opt { color: var(--faint); font-weight: 400; }
+.watch-page input {
+  width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--line-2);
+  background: var(--panel-2); color: var(--text); font: inherit; font-size: 0.95rem;
+}
+.watch-page input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.watch-page small { color: var(--faint); font-weight: 400; font-size: 0.8rem; line-height: 1.45; }
+.watch-page .err:empty { display: none; }
+.watch-page .err { color: var(--bad); font-size: 0.9rem; margin: 0; }
+.w-pay, .w-status { margin-top: 16px; }
+.w-calls { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 14px; }
+.w-calls li { background: var(--panel-2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.w-call-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; font-size: 0.9rem; }
+.w-calls code { display: block; margin: 8px 0 4px; font-size: 0.82rem; color: var(--accent-2); }
+.wrap-any { overflow-wrap: anywhere; }
+.w-invs { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.w-invs li { border-left: 2px solid var(--accent-line); padding: 6px 0 6px 12px; font-size: 0.9rem; }
+.w-invs .claim { color: var(--muted); margin-top: 4px; }
+@media (max-width: 900px) {
+  .w-grid, .w-how { grid-template-columns: 1fr; }
+  .watch-page .wrap { padding-top: 84px; }
 }

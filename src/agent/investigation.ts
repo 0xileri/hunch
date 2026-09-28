@@ -5,9 +5,10 @@
 // is left of it; every paid call is recorded the moment it returns, with the balance around it; a
 // call costing more than the anomaly limit revokes the key on the spot.
 import { randomBytes } from 'node:crypto'
-import { POLICY } from '../config.js'
+import { MISSION, POLICY } from '../config.js'
 import { log } from '../core/log.js'
 import { lastBalance, save, state, type BalanceReading } from '../core/state.js'
+import { chargeWatch, houseWatch, watchById } from '../core/watches.js'
 import type {
   Artifact, Auction, Bid, Check, Decision, EvidenceDoc, Investigation, SignalCluster, SourceItem, SpendEvent, WorkerId, WorkerRun,
 } from '../core/types.js'
@@ -18,8 +19,8 @@ import { budgetLimits } from './budget-policy.js'
 import { gatherEvidence } from './evidence.js'
 import { gradeChecker, gradeTracer, gradeVerifier, recordJob, runAuction, type Grade } from './market.js'
 import {
-  CHECKER_SCHEMA, CHECKER_SYSTEM, checkerPrompt, CheckerOutput, MAX_TOKENS, postRefs, TRACER_SCHEMA, TRACER_SYSTEM, tracerPrompt,
-  TracerOutput, VERIFIER_SCHEMA, VERIFIER_SYSTEM, verifierPrompt, VerifierOutput,
+  CHECKER_SCHEMA, checkerSystem, checkerPrompt, CheckerOutput, MAX_TOKENS, postRefs, TRACER_SCHEMA, tracerSystem, tracerPrompt,
+  TracerOutput, VERIFIER_SCHEMA, verifierSystem, verifierPrompt, VerifierOutput,
 } from './workers.js'
 
 export interface InvestigationDeps {
@@ -51,13 +52,13 @@ const ROLES: WorkerId[] = ['source-tracer', 'cross-checker', 'verifier']
  * The market for this job: one auction per role, priced on this cluster's actual prompt sizes.
  * `total` is the winners' worst case (full output caps), which is what the budget must cover.
  */
-export async function planInvestigation(cluster: SignalCluster): Promise<{ total: number; auctions: Auction[] }> {
+export async function planInvestigation(cluster: SignalCluster, entity = MISSION.entity): Promise<{ total: number; auctions: Auction[] }> {
   const posts = postsOf(cluster)
   const chars: Record<WorkerId, number> = {
-    'source-tracer': (TRACER_SYSTEM + tracerPrompt(cluster.representativeClaim, posts)).length,
-    'cross-checker': CHECKER_SYSTEM.length + EVIDENCE_CHARS_PLANNED + 900,
+    'source-tracer': (tracerSystem(entity) + tracerPrompt(cluster.representativeClaim, posts)).length,
+    'cross-checker': checkerSystem(entity).length + EVIDENCE_CHARS_PLANNED + 900,
     verifier:
-      (VERIFIER_SYSTEM + verifierPrompt({ claim: cluster.representativeClaim, trigger: '', posts, docs: [], tracer: null, checker: null })).length +
+      (verifierSystem(entity) + verifierPrompt({ claim: cluster.representativeClaim, trigger: '', posts, docs: [], tracer: null, checker: null })).length +
       3 * (MAX_TOKENS['source-tracer'] + MAX_TOKENS['cross-checker'] + 300),
   }
   const auctions = await Promise.all(ROLES.map((role) => runAuction(role, chars[role], MAX_TOKENS[role])))
@@ -67,7 +68,9 @@ export async function planInvestigation(cluster: SignalCluster): Promise<{ total
 
 export async function runInvestigation(cluster: SignalCluster, decision: Decision, deps: InvestigationDeps): Promise<Investigation> {
   const posts = postsOf(cluster)
-  const plan = await planInvestigation(cluster)
+  // The watch that funds this one: its budget pays, its entity and official pages frame the work.
+  const watch = watchById(decision.watchId) ?? houseWatch()
+  const plan = await planInvestigation(cluster, watch.entity)
   const worker = (id: WorkerId, role: string): WorkerRun => {
     const auction = plan.auctions.find((a) => a.role === id)!
     const win = auction.bids.find((b) => b.bidder === auction.winner)!
@@ -79,6 +82,7 @@ export async function runInvestigation(cluster: SignalCluster, decision: Decisio
   const inv: Investigation = {
     id: `inv_${randomBytes(3).toString('hex')}`,
     clusterId: cluster.id,
+    watchId: watch.id,
     claim: cluster.representativeClaim,
     createdAt: new Date().toISOString(),
     finishedAt: null,
@@ -175,11 +179,13 @@ export async function runInvestigation(cluster: SignalCluster, decision: Decisio
               completionTokens: s.completionTokens,
               costUsd: s.costUsd,
               costSource: s.costSource,
+              watchId: watch.id,
               keyPrefix: key.prefix,
               balanceBefore: lastBalance()?.balanceUsd ?? null,
               balanceAfter: null,
             }
             state.spend.push(spend)
+            chargeWatch(watch.id, s.costUsd)
             run.costUsd = round6(run.costUsd + s.costUsd)
             run.completionTokens += s.completionTokens
             inv.spentUsd = meter.spentUsd
@@ -260,17 +266,17 @@ export async function runInvestigation(cluster: SignalCluster, decision: Decisio
     deps.setPhase('INVESTIGATING')
 
     const [tracerRun, checkerRun, verifierRun] = inv.workers as [WorkerRun, WorkerRun, WorkerRun]
-    const tracer = await work(tracerRun, 'trace', TRACER_SYSTEM, tracerPrompt(inv.claim, posts), TRACER_SCHEMA, (v) => TracerOutput.parse(v))
+    const tracer = await work(tracerRun, 'trace', tracerSystem(watch.entity), tracerPrompt(inv.claim, posts), TRACER_SCHEMA, (v) => TracerOutput.parse(v))
     if (tracer) {
       log('WORKER', `source-tracer done: origin ${tracer.origin_ref}, ${tracer.subclaims.length} sub-claims, ${tracer.firsthand_sources} firsthand sources`)
     }
     review(tracerRun, gradeTracer(tracer, posts))
 
-    inv.evidence = await gatherEvidence(posts)
+    inv.evidence = await gatherEvidence(posts, watch.officialSources)
     const fetched = inv.evidence.filter((d) => d.ok)
     log('WORKER', `cross-checker fetched ${fetched.length}/${inv.evidence.length} documents over HTTP ($0): ${inv.evidence.map((d) => `${d.ref} ${d.ok ? d.name : `failed (${d.error})`}`).join(' · ')}`)
     const subclaims = tracer?.subclaims.map((s) => s.claim) ?? [inv.claim]
-    const checker = await work(checkerRun, 'cross_check', CHECKER_SYSTEM, checkerPrompt(subclaims, inv.evidence), CHECKER_SCHEMA, (v) => CheckerOutput.parse(v))
+    const checker = await work(checkerRun, 'cross_check', checkerSystem(watch.entity), checkerPrompt(subclaims, inv.evidence), CHECKER_SCHEMA, (v) => CheckerOutput.parse(v))
     if (checker) {
       const stances = ['supports', 'contradicts', 'context'].map((s) => `${checker.evidence.filter((e) => e.stance === s).length} ${s}`)
       log('WORKER', `cross-checker done: ${stances.join(', ')}; ${checker.gaps.length} gaps`)
@@ -284,7 +290,7 @@ export async function runInvestigation(cluster: SignalCluster, decision: Decisio
       `${m.mentions} mentions from ${m.uniqueSources} sources, ${m.last15} in the last 15 min, score ${decision.score.toFixed(2)}` +
       (m.severityTerms.length ? `; severity terms in the posts: ${m.severityTerms.slice(0, 8).join(', ')}` : '')
     const verdict = await work(
-      verifierRun, 'verify', VERIFIER_SYSTEM,
+      verifierRun, 'verify', verifierSystem(watch.entity),
       verifierPrompt({ claim: inv.claim, trigger, posts, docs: inv.evidence, tracer, checker }),
       VERIFIER_SCHEMA, (v) => VerifierOutput.parse(v),
     )

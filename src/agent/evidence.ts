@@ -9,8 +9,12 @@ import { htmlToText } from '../watcher/sources.js'
 const MAX_DOCS = 6
 const EXCERPT_CHARS = 2500
 
-export async function gatherEvidence(posts: SourceItem[]): Promise<EvidenceDoc[]> {
-  const targets: { name: string; url: string; kind: EvidenceDoc['kind'] }[] = MISSION.officialSources.map((s) => ({ ...s, kind: 'official' }))
+export async function gatherEvidence(
+  posts: SourceItem[],
+  /** The watch's own official pages; the house mission's by default. */
+  official: { name: string; url: string }[] = MISSION.officialSources,
+): Promise<EvidenceDoc[]> {
+  const targets: { name: string; url: string; kind: EvidenceDoc['kind'] }[] = official.map((s) => ({ ...s, kind: 'official' }))
   const seen = new Set(targets.map((t) => normalize(t.url)))
   for (const post of posts) {
     for (const url of post.links) {

@@ -1,11 +1,12 @@
 // A one-off trial of the worker pools on the demo fixture: every tracer and cross-checker runs the
 // same job on the agent's key, and the market's code checks grade each answer. Used to choose which
 // models join the pools; it does not touch the reputation records. Spends about a cent.
+import { MISSION } from '../config.js'
 import '../env.js'
 import { gatherEvidence } from '../agent/evidence.js'
 import { BIDDERS, gradeChecker, gradeTracer } from '../agent/market.js'
 import {
-  CHECKER_SCHEMA, CHECKER_SYSTEM, checkerPrompt, CheckerOutput, MAX_TOKENS, TRACER_SCHEMA, TRACER_SYSTEM, tracerPrompt, TracerOutput,
+  CHECKER_SCHEMA, checkerSystem, checkerPrompt, CheckerOutput, MAX_TOKENS, TRACER_SCHEMA, tracerSystem, tracerPrompt, TracerOutput,
 } from '../agent/workers.js'
 import type { SourceItem } from '../core/types.js'
 import { DEMO_POSTS, DEMO_SOURCES } from '../demo/fixture.js'
@@ -38,13 +39,13 @@ const run = async <T>(model: string, name: string, system: string, user: string,
 
 let subclaims: string[] = [claim]
 for (const b of BIDDERS.filter((b) => b.role === 'source-tracer')) {
-  const r = await run(b.model, 'trace', TRACER_SYSTEM, tracerPrompt(claim, posts), TRACER_SCHEMA, MAX_TOKENS['source-tracer'], (v) => TracerOutput.parse(v))
+  const r = await run(b.model, 'trace', tracerSystem(MISSION.entity), tracerPrompt(claim, posts), TRACER_SCHEMA, MAX_TOKENS['source-tracer'], (v) => TracerOutput.parse(v))
   const g = gradeTracer(r.out, posts)
   if (b.id === 'tracer-haiku' && r.out) subclaims = r.out.subclaims.map((s) => s.claim)
   console.log(`${b.id.padEnd(20)} quality ${g.quality.toFixed(2)} · $${r.cost.toFixed(6)} · ${r.ms}ms · ${r.tokens} out · ${r.error ?? g.notes.join('; ')}`)
 }
 for (const b of BIDDERS.filter((b) => b.role === 'cross-checker')) {
-  const r = await run(b.model, 'cross_check', CHECKER_SYSTEM, checkerPrompt(subclaims, docs), CHECKER_SCHEMA, MAX_TOKENS['cross-checker'], (v) => CheckerOutput.parse(v))
+  const r = await run(b.model, 'cross_check', checkerSystem(MISSION.entity), checkerPrompt(subclaims, docs), CHECKER_SCHEMA, MAX_TOKENS['cross-checker'], (v) => CheckerOutput.parse(v))
   const g = gradeChecker(r.out, docs, subclaims.length)
   console.log(`${b.id.padEnd(20)} quality ${g.quality.toFixed(2)} · $${r.cost.toFixed(6)} · ${r.ms}ms · ${r.tokens} out · ${r.error ?? g.notes.join('; ')}`)
 }

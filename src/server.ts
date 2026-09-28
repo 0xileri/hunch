@@ -7,13 +7,17 @@ import { Hono, type Context } from 'hono'
 import {
   claimKey, demoCooldownLeft, holdsKey, isBusy, refuel, revokeAgentKey, rotateKey, runDemo, scan, setPaused, snapshot, startAgent,
 } from './agent/coordinator.js'
+import { paymentInstructions } from './chain/payments.js'
 import { treasuryAccount } from './chain/refuel.js'
 import { ADMIN_TOKEN, PORT, PUBLIC_URL, SCHEDULE } from './config.js'
 import { log } from './core/log.js'
 import { saveNow, state } from './core/state.js'
+import { budgetOf, createWatch, watchById, watches, WatchError, type WatchRequest } from './core/watches.js'
+import type { Watch } from './core/types.js'
 import { demoFeedXml } from './demo/fixture.js'
 import { announcementsPage, demoIndexPage, postPage, statusPage } from './demo/pages.js'
 import { APP_CSS, APP_JS, dashboardPage } from './web/dashboard.js'
+import { WATCH_JS, watchPage } from './web/watch.js'
 
 const app = new Hono()
 
@@ -21,7 +25,25 @@ const isAdmin = (c: Context) => !ADMIN_TOKEN || c.req.header('authorization') ==
 const denied = (c: Context) => c.json({ error: 'This control needs the operator token.' }, 401)
 const failure = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
+/** A watch as anyone may see it: its terms, its money, and the payments that funded it. */
+const publicWatch = (w: Watch) => ({
+  id: w.id,
+  house: w.house,
+  entity: w.entity,
+  statement: w.statement,
+  terms: w.terms,
+  officialSources: w.officialSources,
+  owner: w.owner,
+  status: w.status,
+  createdAt: w.createdAt,
+  expiresAt: w.expiresAt,
+  budget: budgetOf(w),
+  payments: w.payments,
+})
+
 app.get('/', (c) => c.html(dashboardPage()))
+app.get('/watch', (c) => c.html(watchPage()))
+app.get('/watch.js', (c) => c.body(WATCH_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
 // The logo and its exports (brand/): SVG for the page, PNG for favicons and link previews.
 const BRAND_TYPES: Record<string, string> = { svg: 'image/svg+xml', png: 'image/png' }
 app.get('/brand/:file', (c) => {
@@ -48,6 +70,41 @@ app.get('/api/investigations/:id', (c) => {
   return c.json({ ...inv, spend: state.spend.filter((s) => s.investigationId === inv.id) })
 })
 app.get('/api/spend', (c) => c.json(state.spend))
+
+// ── watches: what the agent sells ───────────────────────────────────────────────────────────────
+// Opening one is free and does nothing on its own. The watch starts when a payment for it lands
+// on chain, which the agent reads itself (src/chain/payments.ts); the server never marks it paid.
+app.post('/api/watch', async (c) => {
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object') return c.json({ error: 'Send a JSON body.' }, 400)
+  try {
+    const watch = createWatch(body as WatchRequest)
+    log('WATCH', `${watch.id} opened for ${watch.entity} on ${watch.terms.map((t) => `"${t}"`).join(', ')}, waiting for payment`)
+    return c.json({ watch: publicWatch(watch), payment: paymentInstructions(watch) }, 201)
+  } catch (err) {
+    if (err instanceof WatchError) return c.json({ error: err.message }, 400)
+    return c.json({ error: failure(err) }, 500)
+  }
+})
+
+app.get('/api/watch/:id', (c) => {
+  const watch = watchById(c.req.param('id'))
+  if (!watch) return c.json({ error: 'not found' }, 404)
+  return c.json({
+    watch: publicWatch(watch),
+    payment: paymentInstructions(watch),
+    investigations: state.investigations.filter((i) => i.watchId === watch.id).map((i) => ({
+      id: i.id,
+      at: i.createdAt,
+      claim: i.claim,
+      spentUsd: i.spentUsd,
+      status: i.artifact?.status ?? i.status,
+      confidence: i.artifact?.confidence ?? null,
+    })),
+  })
+})
+
+app.get('/api/watches', (c) => c.json(watches().map(publicWatch)))
 
 // Scanning is free, so anyone may ask for one, but not more than once a minute.
 let lastPublicScan = 0

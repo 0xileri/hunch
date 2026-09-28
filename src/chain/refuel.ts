@@ -50,7 +50,7 @@ const ERC20_ABI = parseAbi([
 export const txUrl = (hash: string) => `${ROBINHOOD.blockExplorers.default.url}/tx/${hash}`
 export const addressUrl = (address: string) => `${ROBINHOOD.blockExplorers.default.url}/address/${address}`
 
-const publicClient = createPublicClient({ chain: ROBINHOOD, transport: transport() })
+export const publicClient = createPublicClient({ chain: ROBINHOOD, transport: transport() })
 
 export function treasuryAccount() {
   const key = process.env.AGENT_WALLET_PRIVATE_KEY

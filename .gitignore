@@ -13,3 +13,4 @@ deploy-secrets.env
 data/
 
 .claude/
+.watch-check/

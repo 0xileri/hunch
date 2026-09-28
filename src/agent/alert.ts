@@ -1,5 +1,6 @@
 // The alert: a compact Telegram message when a bot is configured, otherwise the dashboard only.
 import { MISSION, PUBLIC_URL, TELEGRAM } from '../config.js'
+import { watchById } from '../core/watches.js'
 import type { Investigation } from '../core/types.js'
 
 const STATUS_LABEL = {
@@ -14,7 +15,7 @@ export function alertText(inv: Investigation): string {
   const t = inv.trigger
   const spent = inv.balanceBefore !== null && inv.balanceAfter !== null ? inv.balanceBefore - inv.balanceAfter : inv.spentUsd
   return [
-    `⚠ HUNCH · ${MISSION.entity}${inv.demo ? ' (demo fixture)' : ''}`,
+    `⚠ HUNCH · ${watchById(inv.watchId)?.entity ?? MISSION.entity}${inv.demo ? ' (demo fixture)' : ''}`,
     '',
     `Claim: ${a.claim}`,
     `Status: ${STATUS_LABEL[a.status]} · confidence ${Math.round(a.confidence * 100)}%`,

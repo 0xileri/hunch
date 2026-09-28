@@ -6,11 +6,13 @@
 // ACCEPTED | REJECTED → ALERTED) → IDLE
 import { randomBytes } from 'node:crypto'
 import { parseUnits } from 'viem'
-import { MISSION, MODELS, POLICY, REFUEL, SCHEDULE, SIGNAL } from '../config.js'
+import { MISSION, MODELS, POLICY, REFUEL, SCHEDULE, SIGNAL, WATCH } from '../config.js'
 import { log, recentLog } from '../core/log.js'
 import { lastBalance, missionBudgetUsd, missionSpentUsd, refueledUsd, save, state, type BalanceReading } from '../core/state.js'
-import type { Decision, Refuel, SignalCluster } from '../core/types.js'
+import type { Decision, Refuel, SignalCluster, SourceItem } from '../core/types.js'
+import { activeWatches, budgetOf, houseWatch, matchWatch, watches } from '../core/watches.js'
 import { addressUrl, buyAndActivate, readTreasury, RefuelError, treasuryAccount, txUrl, type Treasury } from '../chain/refuel.js'
+import { collectPayments } from '../chain/payments.js'
 import { DEMO_POSTS, DEMO_SOURCES, fixtureRun, releaseWave, startFixtureRun } from '../demo/fixture.js'
 import { createKey, getBalance, getKeyStatus, keyAnswers, revokeKey as orbioRevoke, topUps, type HeldKey } from '../orbio/keys.js'
 import { budgetLimits, decide } from './budget-policy.js'
@@ -206,6 +208,9 @@ async function scanOnce(reason: string): Promise<void> {
     // Clusters that moved, plus on-mission ones still waiting on a decision (a key may be back).
     for (const c of state.clusters) if (c.state === 'watching') touched.add(c)
 
+    // Payments that landed since the last scan, so a watch funded a minute ago is worked this one.
+    await collectPayments().catch((err) => log('ERROR', `could not read payments: ${err instanceof Error ? err.message : String(err)}`))
+
     setPhase('EVALUATING')
     let balanceUsd = lastBalance()?.balanceUsd ?? null
     if (runtime.orbio.connected || !runtime.orbio.error) {
@@ -273,10 +278,19 @@ async function scanOnce(reason: string): Promise<void> {
 }
 
 async function evaluate(cluster: SignalCluster, balanceUsd: number | null): Promise<Decision> {
-  const { metrics, factors, score } = measure(cluster, state.items, state.clusters)
+  // Which watch is this claim about? Its terms are what the score measures "on mission" against.
+  const text = cluster.itemIds
+    .map((id) => state.items.get(id))
+    .filter((i): i is SourceItem => !!i)
+    .map((i) => `${i.title} ${i.text}`)
+    .join(' ')
+  const match = matchWatch(`${cluster.representativeClaim} ${text}`)
+  const watch = match?.watch ?? null
+  const { metrics, factors, score } = measure(cluster, state.items, state.clusters, Date.now(), watch?.terms ?? [])
   const estimateUsd = metrics.onMission && score >= SIGNAL.investigateAt ? await planInvestigation(cluster).then((p) => p.total, () => null) : null
   const result = decide({
     cluster,
+    watch,
     score,
     metrics,
     estimateUsd,
@@ -289,6 +303,7 @@ async function evaluate(cluster: SignalCluster, balanceUsd: number | null): Prom
   })
   const decision: Decision = {
     at: new Date().toISOString(),
+    watchId: watch?.id ?? null,
     score,
     factors,
     metrics,
@@ -529,6 +544,24 @@ export function snapshot() {
     .map((c) => ({ id: c.id, claim: c.representativeClaim, decision: c.decisions.at(-1)!, sources: [...new Set(itemsOf(c).map((i) => i.source))] }))
   return {
     mission: { ...MISSION },
+    // What the agent has been paid to watch, with each one's own budget. Payments carry tx hashes
+    // only; nothing here identifies a customer beyond the address that paid.
+    watches: watches().map((w) => ({
+      id: w.id,
+      house: w.house,
+      entity: w.entity,
+      statement: w.statement,
+      terms: w.terms,
+      officialSources: w.officialSources,
+      owner: w.owner,
+      status: w.status,
+      createdAt: w.createdAt,
+      expiresAt: w.expiresAt,
+      budget: budgetOf(w),
+      payments: w.payments,
+      investigations: state.investigations.filter((i) => i.watchId === w.id).length,
+    })),
+    watchPolicy: { ...WATCH },
     policy: { ...POLICY, ...limits, models: MODELS, signal: SIGNAL },
     market: { ...MARKET, workers: marketView() },
     schedule: { enabled: SCHEDULE.enabled, scanEveryMin: SCHEDULE.scanEveryMin, demoWaveDelaySec: SCHEDULE.demoWaveDelaySec },

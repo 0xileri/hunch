@@ -20,7 +20,7 @@ function postsBlock(posts: SourceItem[], maxChars = 600): string {
 
 // ── source-tracer ────────────────────────────────────────────────────────────────────────────────
 
-export const TRACER_SYSTEM = `You are the source-tracer on an intelligence team protecting ${MISSION.entity}.
+export const tracerSystem = (entity: string) => `You are the source-tracer on an intelligence team protecting ${entity}.
 A local clustering step grouped the posts below as one emerging narrative. Work only from these posts.
 Find the earliest post, split the narrative into its distinct factual sub-claims, and say where each first appears and which posts repeat it.
 Label each sub-claim: "firsthand" (the poster reports their own experience), "secondhand" (relays what others say), "speculation" (a guess or question), or "media" (a news write-up of other reports).
@@ -75,7 +75,7 @@ export const TRACER_SCHEMA = {
 
 // ── cross-checker ────────────────────────────────────────────────────────────────────────────────
 
-export const CHECKER_SYSTEM = `You are the cross-checker on an intelligence team protecting ${MISSION.entity}.
+export const checkerSystem = (entity: string) => `You are the cross-checker on an intelligence team protecting ${entity}.
 You get the sub-claims of an emerging narrative and documents fetched from the mission's official sources and from links in the posts.
 For every document that bears on a sub-claim, record what it establishes: "supports", "contradicts", or "context" (relevant but neither).
 Quote a short exact excerpt for each finding. Cite only the document refs given (E1, E2, ...). If no document addresses a sub-claim, say so under gaps.
@@ -150,7 +150,7 @@ export const CHECKER_SCHEMA = {
 
 // ── verifier ─────────────────────────────────────────────────────────────────────────────────────
 
-export const VERIFIER_SYSTEM = `You are the verifier on an intelligence team protecting ${MISSION.entity}.
+export const verifierSystem = (entity: string) => `You are the verifier on an intelligence team protecting ${entity}.
 Combine the source-tracer's and cross-checker's reports into one finding for the operator.
 Judge the narrative as it is spreading, including its most severe sub-claims: those are usually why it was funded. Restate the claim so it includes them.
 If the milder part is established and the severe part is not (or is contradicted), the status is "partially_supported".

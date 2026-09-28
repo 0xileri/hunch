@@ -102,5 +102,28 @@ export const TELEGRAM = {
   chatId: process.env.TELEGRAM_CHAT_ID,
 }
 
+/**
+ * Watches: what Hunch sells. Someone pays USDG through the payment contract and that payment
+ * becomes their watch's investigation budget. The margin is the fuel spread — the treasury buys
+ * CREDIT under par (see REFUEL.maxPrice), so a dollar paid in funds a dollar of inference and the
+ * house keeps the difference.
+ */
+export const WATCH = {
+  enabled: (process.env.WATCH_ENABLED ?? 'true') !== 'false',
+  /** The payment contract that emits `Funded` events; unset until it is deployed. */
+  contract: (process.env.HUNCH_PAY_CONTRACT ?? '').trim() || null,
+  /** Smallest payment that opens a watch. */
+  minUsdg: num('WATCH_MIN_USDG', 2),
+  /** Investigation budget bought by one USDG. */
+  usdPerUsdg: num('WATCH_USD_PER_USDG', 1),
+  /** How long a watch runs before it has to be renewed. */
+  days: num('WATCH_DAYS', 30),
+  /** Below this, a watch's remaining budget is too small to fund anything. */
+  dustUsd: num('WATCH_DUST_USD', 0.05),
+  maxTerms: num('WATCH_MAX_TERMS', 6),
+  /** How many watches one address may hold open at once. */
+  maxPerOwner: num('WATCH_MAX_PER_OWNER', 5),
+}
+
 export const ADMIN_TOKEN = process.env.ADMIN_TOKEN
 export const REPO_URL = process.env.REPO_URL

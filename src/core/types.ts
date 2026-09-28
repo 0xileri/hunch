@@ -59,6 +59,8 @@ export interface Check {
 
 export interface Decision {
   at: string
+  /** The watch this decision was made for, null when nothing on mission matched. */
+  watchId?: string | null
   score: number
   factors: Factors
   metrics: ClusterMetrics
@@ -165,6 +167,8 @@ export type InvestigationStatus = 'funded' | 'running' | 'verifying' | 'complete
 export interface Investigation {
   id: string
   clusterId: string
+  /** The watch whose budget paid for it. */
+  watchId?: string | null
   claim: string
   createdAt: string
   finishedAt: string | null
@@ -199,6 +203,7 @@ export interface SpendEvent {
   completionTokens: number
   costUsd: number
   costSource: 'gateway' | 'price-list'
+  watchId?: string | null
   keyPrefix: string
   balanceBefore: number | null
   balanceAfter: number | null
@@ -238,4 +243,47 @@ export interface Refuel {
   error: string | null
   /** A network or RPC failure, retried after minutes rather than an hour. */
   transient?: boolean
+}
+
+/** One payment into a watch, as read from the payment contract's `Funded` events. */
+export interface WatchPayment {
+  at: string
+  txHash: string
+  logIndex: number
+  blockNumber: number
+  from: string
+  token: string
+  tokenSymbol: string
+  amount: number
+  /** What that payment bought, in investigation budget. */
+  creditedUsd: number
+}
+
+/** A watch: prepaid investigation budget aimed at one entity. See src/core/watches.ts. */
+export interface Watch {
+  id: string
+  /** The operator's own mission, which spends the operator's budget and is never paid for. */
+  house: boolean
+  entity: string
+  statement: string
+  terms: string[]
+  officialSources: { name: string; url: string }[]
+  /** The address that paid for it, lowercase. */
+  owner: string | null
+  status: 'pending' | 'active' | 'expired' | 'cancelled'
+  createdAt: string
+  activatedAt: string | null
+  expiresAt: string | null
+  fundedUsd: number
+  spentUsd: number
+  payments: WatchPayment[]
+}
+
+export interface WatchBudget {
+  budgetUsd: number
+  spentUsd: number
+  remaining: number
+  reserve: number
+  cap: number
+  available: number
 }

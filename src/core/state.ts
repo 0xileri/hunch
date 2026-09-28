@@ -3,7 +3,7 @@
 // batched, so a burst of updates during an investigation is one write.
 import { readJson, writeJson } from './store.js'
 import { POLICY } from '../config.js'
-import type { Investigation, Refuel, SignalCluster, SourceItem, SpendEvent, WorkerRecord } from './types.js'
+import type { Investigation, Refuel, SignalCluster, SourceItem, SpendEvent, Watch, WorkerRecord } from './types.js'
 
 export interface BalanceReading {
   at: string
@@ -32,6 +32,8 @@ export interface AgentMemory {
   publicDemos: string[]
   /** Cost of spend events trimmed from the ledger file, so the budget never forgets old spend. */
   archivedSpentUsd: number
+  /** Last block scanned for watch payments, as a string so JSON keeps it exact. */
+  paymentsBlock?: string | null
 }
 
 interface State {
@@ -39,6 +41,8 @@ interface State {
   clusters: SignalCluster[]
   investigations: Investigation[]
   spend: SpendEvent[]
+  /** What the agent was paid to watch; see src/core/watches.ts. */
+  watches: Watch[]
   agent: AgentMemory
 }
 
@@ -49,6 +53,7 @@ const empty = (): State => ({
   clusters: [],
   investigations: [],
   spend: [],
+  watches: [],
   agent: {
     startedAt: null,
     startBalanceUsd: null,
@@ -63,6 +68,7 @@ const empty = (): State => ({
     refuels: [],
     publicDemos: [],
     archivedSpentUsd: 0,
+    paymentsBlock: null,
   },
 })
 
@@ -73,6 +79,7 @@ export const state = {
   clusters: loaded.clusters,
   investigations: loaded.investigations,
   spend: loaded.spend,
+  watches: loaded.watches ?? [],
   agent: { ...empty().agent, ...loaded.agent },
 }
 
@@ -96,6 +103,7 @@ export function saveNow(): void {
     clusters: state.clusters,
     investigations: state.investigations.slice(-50),
     spend: state.spend,
+    watches: state.watches,
     agent: { ...state.agent, balances: state.agent.balances.slice(-500), keyEvents: state.agent.keyEvents.slice(-100) },
   } satisfies State)
 }
