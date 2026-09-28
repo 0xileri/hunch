@@ -125,5 +125,18 @@ export const WATCH = {
   maxPerOwner: num('WATCH_MAX_PER_OWNER', 5),
 }
 
+/**
+ * The agent's own token, launched on Orbio's agent launchpad. Trading fees on it are collected by
+ * the launchpad vault, staked as $ORBIO, and the stake earns $CREDIT the agent claims for itself.
+ * Read-only unless a claim is due; the staked principal belongs to the launching wallet.
+ */
+export const LAUNCHPAD = {
+  token: (process.env.HUNCH_TOKEN ?? '').trim() || null,
+  symbol: process.env.HUNCH_TOKEN_SYMBOL ?? 'HUNCH',
+  /** Try a claim at most this often; rewards settle hourly. */
+  claimEveryMin: num('LAUNCHPAD_CLAIM_EVERY_MIN', 60),
+  enabled: process.env.LAUNCHPAD !== 'off',
+}
+
 export const ADMIN_TOKEN = process.env.ADMIN_TOKEN
 export const REPO_URL = process.env.REPO_URL

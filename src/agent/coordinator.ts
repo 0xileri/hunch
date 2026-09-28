@@ -6,13 +6,14 @@
 // ACCEPTED | REJECTED → ALERTED) → IDLE
 import { randomBytes } from 'node:crypto'
 import { parseUnits } from 'viem'
-import { MISSION, MODELS, POLICY, REFUEL, SCHEDULE, SIGNAL, WATCH } from '../config.js'
+import { LAUNCHPAD, MISSION, MODELS, POLICY, REFUEL, SCHEDULE, SIGNAL, WATCH } from '../config.js'
 import { log, recentLog } from '../core/log.js'
 import { lastBalance, missionBudgetUsd, missionSpentUsd, refueledUsd, save, state, type BalanceReading } from '../core/state.js'
 import type { Decision, Refuel, SignalCluster, SourceItem } from '../core/types.js'
 import { activeWatches, budgetOf, houseWatch, matchWatch, watches } from '../core/watches.js'
 import { addressUrl, buyAndActivate, readTreasury, RefuelError, treasuryAccount, txUrl, type Treasury } from '../chain/refuel.js'
 import { collectPayments } from '../chain/payments.js'
+import { claimCredit, launchConfigured, readLaunch, type LaunchPosition } from '../chain/launchpad.js'
 import { DEMO_POSTS, DEMO_SOURCES, fixtureRun, releaseWave, startFixtureRun } from '../demo/fixture.js'
 import { createKey, getBalance, getKeyStatus, keyAnswers, revokeKey as orbioRevoke, topUps, type HeldKey } from '../orbio/keys.js'
 import { budgetLimits, decide } from './budget-policy.js'
@@ -389,7 +390,26 @@ export function runway(): number | null {
 }
 
 /** After every scan: refresh the treasury, settle any refuel still confirming, refuel if the runway is short. */
+let launch: LaunchPosition | null = null
+let lastClaimAt = 0
+
+/**
+ * The token's side of the fuel: read the launch position, and claim whatever the stake has earned.
+ * Rewards settle by the hour, so most attempts have nothing to claim and cost nothing.
+ */
+async function launchCheck(): Promise<void> {
+  if (!launchConfigured() || !LAUNCHPAD.enabled) return
+  launch = await readLaunch().catch((err) => {
+    log('ERROR', `could not read the launch position: ${err instanceof Error ? err.message : String(err)}`)
+    return launch
+  })
+  if (state.agent.paused || Date.now() - lastClaimAt < LAUNCHPAD.claimEveryMin * 60_000) return
+  lastClaimAt = Date.now()
+  await claimCredit().catch((err) => log('ERROR', `launchpad claim failed: ${err instanceof Error ? err.message : String(err)}`))
+}
+
 async function fuelCheck(): Promise<void> {
+  await launchCheck()
   if (!treasuryAccount()) return
   runtime.treasury = await readTreasury().catch(() => runtime.treasury)
   for (const r of state.agent.refuels.filter((r) => r.status === 'unconfirmed')) await confirmRefuel(r, 0)
@@ -583,6 +603,16 @@ export function snapshot() {
       latest: lastBalance(),
       history: state.agent.balances.slice(-60).map((b) => ({ at: b.at, usd: b.balanceUsd })),
     },
+    // The token: its vault position, its stake, and what that stake has earned.
+    launch:
+      launchConfigured() ?
+        {
+          ...LAUNCHPAD,
+          position: launch,
+          tokenUrl: LAUNCHPAD.token ? addressUrl(LAUNCHPAD.token) : null,
+          vaultUrl: launch ? addressUrl(launch.receiver) : null,
+        }
+      : null,
     fuel: {
       configured: !!treasuryAccount(),
       enabled: REFUEL.enabled,

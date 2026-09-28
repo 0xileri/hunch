@@ -179,6 +179,7 @@
         <dt>Typical investigation</dt><dd>${b.typicalInvestigationUsd ? usd(b.typicalInvestigationUsd, 4) : '—'}</dd>
         <dt>Runway</dt><dd>${b.runway !== null ? `≈ ${b.runway} investigations` : '—'}</dd>
       </dl>
+      ${launchHtml()}
       ${fuelHtml()}
       <div class="keybox">
         <span class="badge ${esc(k.state)}">${k.state === 'active' ? 'key active' : k.state === 'none' ? 'no key' : `key ${esc(k.state)}`}</span>
@@ -198,6 +199,27 @@
     if (run === null || run === undefined) return ''
     const max = Math.max(thr * 2, run, 1)
     return `<div class="fuelgauge"><div class="fg-bar"><i class="${run < thr ? 'low' : ''}" style="width:${Math.min(100, (run / max) * 100)}%"></i><span class="fg-tick" style="left:${(thr / max) * 100}%"></span></div><div class="fg-labels"><span>runway <b>${run}</b></span><span>refuels below <b>${thr}</b></span></div></div>`
+  }
+
+  /** The agent's own token: the stake its trading fees built, and what that stake has earned. */
+  function launchHtml() {
+    const l = S.launch
+    if (!l || !l.position) return ''
+    const p = l.position
+    const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—')
+    return `<div class="fuel">
+      <div class="k">Token · ${esc(l.symbol)} on Orbio's launchpad</div>
+      <div class="fuelrow">
+        <a href="${esc(l.tokenUrl || '#')}" target="_blank" rel="noopener" class="mono">${short(p.token)}</a>
+        <span class="mono">agent #${p.agentId}</span>
+      </div>
+      <div class="muted" style="font-size:.78rem">Trading fees on ${esc(l.symbol)} are collected by the launchpad vault, staked as ORBIO after its ${(p.vaultFeeBps / 100).toFixed(0)}% share, and that stake earns CREDIT the agent claims for itself.</div>
+      <dl class="kv">
+        <dt>Staked for this agent</dt><dd>${p.stakedOrbio.toFixed(2)} ORBIO</dd>
+        <dt>CREDIT in the wallet</dt><dd>${p.creditHeld ? usd(p.creditHeld, 4) : '—'}</dd>
+        <dt>Principal unlocks</dt><dd>${p.unlocksAt.slice(0, 10)}</dd>
+      </dl>
+    </div>`
   }
 
   function fuelHtml() {
