@@ -1,7 +1,7 @@
 {
   "contract": "HunchPay",
   "compiler": "0.8.37+commit.f401782d.Emscripten.clang",
-  "compiledAt": "2026-09-28T20:57:44.245Z",
+  "compiledAt": "2026-09-28T22:14:18.878Z",
   "abi": [
     {
       "inputs": [

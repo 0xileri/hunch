@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { createWalletClient, formatEther, type Hex } from 'viem'
 import '../env.js'
-import { CONTRACTS, ROBINHOOD, addressUrl, publicClient, treasuryAccount, txUrl } from '../chain/refuel.js'
+import { CONTRACTS, ROBINHOOD, addressUrl, publicClient, transport, treasuryAccount, txUrl } from '../chain/refuel.js'
 
 const artifact = JSON.parse(readFileSync(new URL('../chain/hunchpay.json', import.meta.url), 'utf8')) as {
   abi: unknown[]
@@ -37,7 +37,7 @@ if (!process.argv.includes('--yes')) {
   return 0
 }
 
-const wallet = createWalletClient({ account, chain: ROBINHOOD, transport: publicClient.transport as never })
+const wallet = createWalletClient({ account, chain: ROBINHOOD, transport: transport() })
 const hash = await wallet.deployContract({
   abi: artifact.abi as never,
   bytecode: artifact.bytecode,
