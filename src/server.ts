@@ -17,6 +17,7 @@ import type { Watch } from './core/types.js'
 import { demoFeedXml } from './demo/fixture.js'
 import { announcementsPage, demoIndexPage, postPage, statusPage } from './demo/pages.js'
 import { APP_CSS, APP_JS, dashboardPage } from './web/dashboard.js'
+import { ownerPage } from './web/owner.js'
 import { WATCH_JS, watchPage } from './web/watch.js'
 
 const app = new Hono()
@@ -43,6 +44,8 @@ const publicWatch = (w: Watch) => ({
 
 app.get('/', (c) => c.html(dashboardPage()))
 app.get('/watch', (c) => c.html(watchPage()))
+// The owner's own settings. No token gate: the contract checks the signature, not this server.
+app.get('/owner', (c) => c.html(ownerPage()))
 app.get('/watch.js', (c) => c.body(WATCH_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
 // The logo and its exports (brand/): SVG for the page, PNG for favicons and link previews.
 const BRAND_TYPES: Record<string, string> = { svg: 'image/svg+xml', png: 'image/png' }
