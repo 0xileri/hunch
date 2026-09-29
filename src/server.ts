@@ -7,7 +7,7 @@ import { Hono, type Context } from 'hono'
 import {
   claimKey, demoCooldownLeft, holdsKey, isBusy, refuel, revokeAgentKey, rotateKey, runDemo, scan, setPaused, snapshot, startAgent,
 } from './agent/coordinator.js'
-import { paymentInstructions } from './chain/payments.js'
+import { paymentInstructions, refreshPayments } from './chain/payments.js'
 import { treasuryAccount } from './chain/refuel.js'
 import { ADMIN_TOKEN, PORT, PUBLIC_URL, SCHEDULE } from './config.js'
 import { log } from './core/log.js'
@@ -90,9 +90,14 @@ app.post('/api/watch', async (c) => {
   }
 })
 
-app.get('/api/watch/:id', (c) => {
-  const watch = watchById(c.req.param('id'))
+app.get('/api/watch/:id', async (c) => {
+  let watch = watchById(c.req.param('id'))
   if (!watch) return c.json({ error: 'not found' }, 404)
+  // Someone is waiting on this one: look for its payment now instead of at the next scan.
+  if (!watch.house && watch.status === 'pending') {
+    await refreshPayments().catch((err) => log('ERROR', `payment check failed: ${failure(err)}`))
+    watch = watchById(c.req.param('id')) ?? watch
+  }
   return c.json({
     watch: publicWatch(watch),
     payment: paymentInstructions(watch),

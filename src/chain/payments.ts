@@ -95,6 +95,24 @@ export async function collectPayments(): Promise<WatchPayment[]> {
   return applied
 }
 
+let inflight: Promise<WatchPayment[]> | null = null
+let lastRun = 0
+
+/**
+ * A payment check someone is waiting on: when a customer opens their watch page, look now rather
+ * than at the next scan. Callers share one run, and runs are spaced out, so a page that polls (or
+ * a hundred of them) still costs one read of the chain.
+ */
+export function refreshPayments(maxAgeMs = 8_000): Promise<WatchPayment[]> {
+  if (inflight) return inflight
+  if (Date.now() - lastRun < maxAgeMs) return Promise.resolve([])
+  inflight = collectPayments().finally(() => {
+    inflight = null
+    lastRun = Date.now()
+  })
+  return inflight
+}
+
 async function creditFromLog(entry: FundedLog): Promise<WatchPayment | null> {
   const { watchId, payer, token, amount } = entry.args
   if (!watchId || !payer || !token || amount === undefined) return null
