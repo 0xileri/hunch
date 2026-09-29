@@ -2,9 +2,11 @@
 // then follow what the agent found. The server never marks a watch paid — the agent reads the
 // payment off the chain itself — so this page only collects a request and shows what to send.
 import { readFileSync } from 'node:fs'
-import { PUBLIC_URL, WATCH } from '../config.js'
+import { LAUNCHPAD, PUBLIC_URL, WATCH } from '../config.js'
 import { CONTRACTS } from '../chain/refuel.js'
 import { payContract } from '../chain/payments.js'
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
 
 export const WATCH_JS = readFileSync(new URL('./watch.js', import.meta.url), 'utf8')
 
@@ -89,6 +91,11 @@ export function watchPage(): string {
         <dt>Typical investigation</dt><dd>about $0.02</dd>
         <dt>Watching, scoring, clustering</dt><dd>free, always</dd>
       </dl>
+      ${
+        WATCH.usdPerHunch > 0 ?
+          `<p class="muted">You can also pay in <b>${esc(LAUNCHPAD.symbol)}</b>, the agent's own token, at a posted rate of $${(WATCH.usdPerHunch * WATCH.hunchBonus).toFixed(8)} of budget per token — a ${Math.round((WATCH.hunchBonus - 1) * 100)}% bonus over the rate itself. The rate is posted by hand and reviewed, not read from the market, and one payment credits at most $${WATCH.maxCreditPerPaymentUsd}.</p>`
+        : ''
+      }
       <p class="muted">The agent keeps a fifth of your budget in reserve and never spends more than 15% of it on one investigation. Every cent it does spend is shown on the <a href="/">live console</a> with the balance before and after.</p>
       <p class="muted">Hunch reports a status, a confidence and what it could not resolve. It does not tell you a claim is true, and it never says a rumour is settled when it is not.</p>
     </section>
