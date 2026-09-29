@@ -5,7 +5,7 @@
 // starts work. Nothing is trusted from the request that created the watch — a watch only becomes
 // active when its payment is on chain.
 import { encodeFunctionData, formatUnits, parseAbi, type Hex, type Log } from 'viem'
-import { WATCH } from '../config.js'
+import { LAUNCHPAD, WATCH } from '../config.js'
 import { log } from '../core/log.js'
 import { save, state } from '../core/state.js'
 import { budgetOf, watchById, watches } from '../core/watches.js'
@@ -19,9 +19,30 @@ export const PAY_ABI = parseAbi([
   'function treasury() view returns (address)',
 ])
 
-/** Tokens the agent will credit, with the decimals and rate it prices them at. */
-export const PAYMENT_TOKENS: Record<string, { symbol: string; decimals: number; usdPerUnit: number }> = {
-  [CONTRACTS.usdg.toLowerCase()]: { symbol: 'USDG', decimals: 6, usdPerUnit: WATCH.usdPerUsdg },
+export interface PaymentToken {
+  symbol: string
+  decimals: number
+  /** Investigation budget one whole token buys. */
+  usdPerUnit: number
+}
+
+/**
+ * Tokens the agent will credit, and what it prices them at. USDG is a dollar. The agent's own
+ * token counts only once someone posts a rate for it: an unpriced token is logged and left
+ * uncredited rather than guessed at.
+ */
+export function paymentTokens(): Record<string, PaymentToken> {
+  const tokens: Record<string, PaymentToken> = {
+    [CONTRACTS.usdg.toLowerCase()]: { symbol: 'USDG', decimals: 6, usdPerUnit: WATCH.usdPerUsdg },
+  }
+  if (LAUNCHPAD.token && WATCH.usdPerHunch > 0) {
+    tokens[LAUNCHPAD.token.toLowerCase()] = {
+      symbol: LAUNCHPAD.symbol,
+      decimals: 18,
+      usdPerUnit: WATCH.usdPerHunch * WATCH.hunchBonus,
+    }
+  }
+  return tokens
 }
 
 /** A watch id as the contract sees it: the id string, right-padded into a bytes32. */
@@ -88,14 +109,18 @@ async function creditFromLog(entry: FundedLog): Promise<WatchPayment | null> {
   }
   if (watch.payments.some((p) => p.txHash === txHash && p.logIndex === logIndex)) return null
 
-  const known = PAYMENT_TOKENS[token.toLowerCase()]
+  const known = paymentTokens()[token.toLowerCase()]
   if (!known) {
     log('PAY', `payment to ${watch.id} in an unpriced token ${token} · ${txUrl(txHash)}`)
     return null
   }
 
   const units = Number(formatUnits(amount, known.decimals))
-  const creditedUsd = Math.round(units * known.usdPerUnit * 1e6) / 1e6
+  const asked = units * known.usdPerUnit
+  const creditedUsd = Math.round(Math.min(asked, WATCH.maxCreditPerPaymentUsd) * 1e6) / 1e6
+  if (asked > creditedUsd) {
+    log('PAY', `${watch.id}: ${units} ${known.symbol} is worth $${asked.toFixed(2)}, credited at the $${WATCH.maxCreditPerPaymentUsd} per-payment cap`)
+  }
   const payment: WatchPayment = {
     at: new Date().toISOString(),
     txHash,
@@ -158,6 +183,9 @@ export function paymentInstructions(watch: Watch) {
     decimals: 6,
     minAmount: WATCH.minUsdg,
     usdPerUnit: WATCH.usdPerUsdg,
+    alsoAccepts: Object.entries(paymentTokens())
+      .filter(([addr]) => addr !== CONTRACTS.usdg.toLowerCase())
+      .map(([addr, t]) => ({ token: addr, symbol: t.symbol, usdPerUnit: t.usdPerUnit })),
     watchIdBytes32: watchIdToBytes32(watch.id),
     steps: address
       ? [

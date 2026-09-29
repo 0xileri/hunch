@@ -427,6 +427,30 @@
       ${roles.map(([role, title]) => `<h3 style="margin-top:10px">${title}</h3><ul class="bg">${m.workers.filter((w) => w.role === role).sort((a, b) => b.reputation - a.reputation).map((w) => `<li><span class="s">${w.reputation.toFixed(2)}</span><span><b>${esc(w.label)}</b> <span class="muted">${w.jobs} job${w.jobs === 1 ? '' : 's'}${w.avgCostUsd !== null ? ` · avg ${usd(w.avgCostUsd, 5)}` : ''}${w.avgLatencyMs !== null ? ` · ${(w.avgLatencyMs / 1000).toFixed(1)}s` : ''}</span><div class="bar" style="margin:4px 0"><i style="width:${w.reputation * 100}%;background:${w.reputation >= m.qualityFloor ? 'var(--ok)' : 'var(--bad)'}"></i></div>${w.recent ? `<div class="m">last: ${w.recent.quality.toFixed(2)} · ${esc(w.recent.notes.join(' · '))}</div>` : '<div class="m">no jobs yet</div>'}</span></li>`).join('')}</ul>`).join('')}`)
   }
 
+  /** What the agent has been paid to watch, and what each watch has left to spend. */
+  function renderWatches() {
+    const list = S.watches || []
+    const paid = list.filter((w) => !w.house)
+    const money = paid.reduce((sum, w) => sum + w.budget.budgetUsd, 0)
+    const row = (w) => {
+      const b = w.budget
+      const pct = b.budgetUsd ? Math.min(100, (b.spentUsd / b.budgetUsd) * 100) : 0
+      return `<li>
+        <div class="who">${esc(w.entity)} <span class="badge ${w.status === 'active' ? 'ok' : w.status === 'pending' ? 'busy' : ''}">${esc(w.house ? 'house' : w.status)}</span></div>
+        <div class="role">${w.terms.map((t) => `"${esc(t)}"`).join(', ')}</div>
+        <div class="bar" style="height:6px;margin:6px 0"><i style="width:${pct}%"></i></div>
+        <div class="role">${usd(b.spentUsd, 4)} spent of ${usd(b.budgetUsd, 2)}${w.investigations ? ` · ${w.investigations} investigation${w.investigations > 1 ? 's' : ''}` : ''}${w.expiresAt ? ` · until ${w.expiresAt.slice(0, 10)}` : ''}</div>
+      </li>`
+    }
+    set('watches', `<h2>Watches <span class="right mono" style="font-size:.75rem">${paid.length} paid</span></h2>
+      <ul class="workers">${list.map(row).join('')}</ul>
+      ${
+        S.watchPolicy && S.watchPolicy.contract
+          ? `<p class="muted" style="font-size:.78rem;margin:10px 0 0">Anyone can <a href="/watch">open a watch</a>: pay in USDG and that payment becomes its investigation budget, at $${S.watchPolicy.usdPerUsdg.toFixed(2)} per USDG, minimum ${S.watchPolicy.minUsdg}. ${paid.length ? `${usd(money, 2)} funded so far.` : 'None funded yet.'}</p>`
+          : `<p class="muted" style="font-size:.78rem;margin:10px 0 0">Paid watches are not open yet.</p>`
+      }`)
+  }
+
   function renderSources() {
     set('sources', `<h2>Sources</h2>
       ${S.sources.length ? `<ul class="bg">${S.sources.map((s) => `<li><span class="badge ${s.ok ? 'ok' : 'bad'}">${s.ok ? 'ok' : 'fail'}</span><span>${esc(s.name)}<div class="m">${s.items} items${s.cached ? ' · cached' : ''} · ${time(s.at)}${s.error ? ` · ${esc(s.error)}` : ''}</div></span></li>`).join('')}</ul>` : '<p class="empty">The first scan starts a few seconds after boot.</p>'}
@@ -511,6 +535,7 @@
     renderMarket()
     renderBackground()
     renderSources()
+    renderWatches()
   }
 
   let refreshing = false

@@ -84,7 +84,7 @@ export function dashboardPage(): string {
   <div class="nav-inner">
     <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
     <nav class="links" aria-label="Sections">
-      <a href="#signal">Signal</a><a href="#investigation">Investigation</a><a href="#market">Market</a><a href="#wallet">Fuel</a><a href="#log">Log</a>
+      <a href="#signal">Signal</a><a href="#investigation">Investigation</a><a href="#watches">Watches</a><a href="#market">Market</a><a href="#wallet">Fuel</a><a href="/watch">Get watched</a>
     </nav>
     <div class="nav-right">
       <button class="theme-toggle" id="btn-theme" type="button" aria-label="Switch to light theme">Light mode</button>
@@ -149,6 +149,7 @@ export function dashboardPage(): string {
 </div>
 
 <div class="grid3">
+  <section class="card reveal" id="watches"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
   <section class="card reveal" id="spend"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
   <section class="card reveal" id="market"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>
   <section class="card reveal" id="background"><div class="sk-wrap" aria-hidden="true"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-block"></div></div></section>

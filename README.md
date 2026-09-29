@@ -11,7 +11,9 @@
 
 Hunch is an agent with a finite inference budget that decides when information is worth paying for. It watches public sources and scores emerging narratives with local embeddings, for free: that score is its hunch. It spends its own [Orbio](https://orbio.so) inference budget on proof only when a hunch crosses a risk threshold and the budget allows it. When it spends, a coordinator funds a bounded investigation: two workers and a verifier produce an evidence-backed artifact, and every call is recorded with its real cost and the real balance.
 
-Built for Orbio Build Week. It is an **autonomous budgeted swarm** that refuels itself from an operator-funded treasury on Robinhood Chain, through Orbio's `buyAndActivate`. Two live refuels, one triggered by its own policy, each turned 2 USDG into $2.67 of inference, confirmed in `orbio_get_balance` (see [Self-refuel](#self-refuel-from-a-treasury)). It doesn't earn its fuel: nothing here turns completed work into money.
+Built for Orbio Build Week. It is an **autonomous budgeted swarm** with two ways of paying for itself: people buy [watches](#watches-what-hunch-sells) in USDG, and the agent's own token, launched on [Orbio's agent launchpad](#the-token-and-the-launchpad), turns trading fees into staked $ORBIO that earns $CREDIT. It also refuels from its treasury on Robinhood Chain through Orbio's `buyAndActivate`: two live refuels, one triggered by its own policy, each turning 2 USDG into $2.67 of inference and confirmed in `orbio_get_balance` (see [Self-refuel](#self-refuel-from-a-treasury)).
+
+What it still is not: an agent that earns by working. A watch is prepaid budget, and trading fees are trading fees. Neither is revenue from a job well done.
 
 > "The important part is not that AI read Reddit. It's that the agent decided when the information was worth spending money on."
 
@@ -119,6 +121,42 @@ The activation raised `balance` directly, while `purchased` and `deposited` stay
 
 **What this is:** the agent decides when it needs fuel, buys it on-chain and activates it for itself. The treasury's money comes from the operator; the agent doesn't earn it. Per the spec, that makes this self-refuel from an operator-funded treasury, not an agent that pays for itself.
 
+## Watches: what Hunch sells
+
+A **watch** is prepaid investigation budget aimed at one entity. Someone names their project and the terms people use for it, pays USDG, and that payment becomes their watch's budget. The agent's policy still decides every cent: the reserve, the per-investigation cap and the worst-case pre-check all apply to that watch's own money.
+
+The margin is the fuel spread, and it is not a secret: the treasury buys CREDIT under par, so a dollar paid in funds a dollar of investigation and the house keeps the difference.
+
+| | |
+|---|---|
+| Minimum | 2 USDG |
+| Rate | 1 USDG = $1.00 of investigation budget |
+| Runs for | 30 days, or until the budget is spent |
+| Reserve and cap | 20% held back, 15% maximum per investigation, per watch |
+| Watching, scoring, clustering | free, always |
+
+Payment is a receipt, not a vault. [`contracts/HunchPay.sol`](contracts/HunchPay.sol) moves an accepted token straight to the treasury and emits `Funded(watchId, payer, token, amount)`; it never holds anyone's money, so there is no balance to drain and no withdraw function to get wrong. The agent reads those events on each scan and credits the watch. **The server never marks a watch paid** — only the chain does.
+
+```
+HunchPay   0xe3a46fd1b5634be335304d6ffdc4a5aded9ea2c1   (treasury: the agent's wallet)
+```
+
+The operator's own mission is the **house watch**: it spends the operator's budget, is never paid for, and is why the demo fixture behaves exactly as it always has. Open one at [`/watch`](https://hunch-agent.up.railway.app/watch), or run the layer offline with `npm run watch:check`.
+
+## The token and the launchpad
+
+Hunch launched on Orbio's agent launchpad as **agent #210**: `HUNCH` paired with `$ORBIO` on Pons. Creator fees from trading are collected by the launchpad vault, which keeps 5% and stakes the rest as $ORBIO. That stake earns $CREDIT, and the agent claims it for itself — the agent wallet is the launch's CREDIT beneficiary, so the key doing the claiming is the one the agent already runs on.
+
+```
+HUNCH      0x0976f3067dd97321b7ab269c5a2c290264f7046d
+vault      0x0E1651aEC67B2a049a4FA6aEb6C1c305aabfc35b   (agent #210)
+receiver   0xf03ce5ce88Eed204f35Cc47aa7F32F0f6B2c1074   (where fees are collected)
+```
+
+`src/chain/launchpad.ts` reads the position on every scan and tries a claim at most hourly. Rewards settle by the hour, so most attempts have nothing to claim; that is reported as nothing, not as a failure. The agent cannot touch the staked principal: only the launching wallet can, and only after the 10-day cliff. The vault's ABI is not published, so those calls were read off the deployed implementation and checked against the launch receipt.
+
+The token is not required to use Hunch and buys no claim on it. It can be accepted as payment for a watch at a posted rate, which is off until a rate is set deliberately — a rate that lags the market is just a cheap way to buy budget — and every payment is capped at what it may credit.
+
 ## The agent owns its key
 
 The agent signs in to the Orbio MCP (`https://www.orbio.so/api/mcp`) as its own OAuth client and manages its key with the real MCP tools:
@@ -208,6 +246,8 @@ The watcher reads the fixture's feeds over HTTP like any other source, and the c
 | Four live public RSS feeds, scanned every 15 minutes and on "Scan now" | "Real-time" monitoring: it scans on a schedule and on demand |
 | Local embeddings, clustering and scores | Worker "bids" are the agent's cost estimates at real prices; no worker is paid |
 | The verifier's acceptance checks (code, not a model) | The artifact as the truth: it reports a status, a confidence and its unknowns |
+| Watch payments: real USDG, on-chain, credited only from `Funded` events | A watch as a subscription: it is prepaid budget, and a quiet month spends none of it |
+| The token, its stake and the CREDIT that stake earns | The token as a claim on Hunch, or as income from the agent's work |
 
 ## Running it
 
@@ -239,7 +279,7 @@ Deviations from the original plan, on purpose: one TypeScript process (Hono) ser
 
 ## Not built
 
-- **Earning.** The treasury is funded by the operator. A version where paying users or rewards fill the treasury would make the agent truly self-funding.
+- **Earning from the work itself.** A watch is prepaid, and trading fees are trading fees. Neither is payment for a finding that turned out to matter.
 - Monitoring anything but text.
 
 ## Limits

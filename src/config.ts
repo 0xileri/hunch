@@ -123,6 +123,16 @@ export const WATCH = {
   maxTerms: num('WATCH_MAX_TERMS', 6),
   /** How many watches one address may hold open at once. */
   maxPerOwner: num('WATCH_MAX_PER_OWNER', 5),
+  /**
+   * What one HUNCH buys in investigation budget. Zero keeps the token out of the payment path:
+   * a posted rate that lags the market is a way to buy budget cheaply, so it is set deliberately
+   * and reviewed, never inferred.
+   */
+  usdPerHunch: num('WATCH_USD_PER_HUNCH', 0),
+  /** Paying in HUNCH credits this much more than the posted rate: the discount for using it. */
+  hunchBonus: num('WATCH_HUNCH_BONUS', 1.15),
+  /** Most one payment may credit, whatever it was paid in. A backstop against a stale rate. */
+  maxCreditPerPaymentUsd: num('WATCH_MAX_CREDIT_PER_PAYMENT_USD', 100),
 }
 
 /**
