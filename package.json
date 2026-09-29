@@ -18,7 +18,8 @@
     "market:trial": "tsx src/scripts/market-trial.ts",
     "watch:check": "tsx src/scripts/watch-check.ts",
     "pay:build": "tsx src/scripts/pay-build.ts",
-    "pay:deploy": "tsx src/scripts/pay-deploy.ts"
+    "pay:deploy": "tsx src/scripts/pay-deploy.ts",
+    "rate:check": "tsx src/scripts/rate-check.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

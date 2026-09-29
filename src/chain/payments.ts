@@ -11,6 +11,7 @@ import { save, state } from '../core/state.js'
 import { budgetOf, watchById, watches } from '../core/watches.js'
 import type { Watch, WatchPayment } from '../core/types.js'
 import { CONTRACTS, publicClient, txUrl } from './refuel.js'
+import { clampToMarket } from './rate.js'
 
 export const PAY_ABI = parseAbi([
   'event Funded(bytes32 indexed watchId, address indexed payer, address indexed token, uint256 amount)',
@@ -116,10 +117,19 @@ async function creditFromLog(entry: FundedLog): Promise<WatchPayment | null> {
   }
 
   const units = Number(formatUnits(amount, known.decimals))
-  const asked = units * known.usdPerUnit
-  const creditedUsd = Math.round(Math.min(asked, WATCH.maxCreditPerPaymentUsd) * 1e6) / 1e6
-  if (asked > creditedUsd) {
-    log('PAY', `${watch.id}: ${units} ${known.symbol} is worth $${asked.toFixed(2)}, credited at the $${WATCH.maxCreditPerPaymentUsd} per-payment cap`)
+  const posted = units * known.usdPerUnit
+  // A posted rate that has drifted above market credits what the tokens are worth instead.
+  const priced = clampToMarket(known.symbol, units, posted)
+  const creditedUsd = Math.round(Math.min(priced.usd, WATCH.maxCreditPerPaymentUsd) * 1e6) / 1e6
+  if (priced.clamped) {
+    log(
+      'PAY',
+      `${watch.id}: the posted ${known.symbol} rate is above market, so ${units} ${known.symbol} credits ` +
+        `$${priced.usd.toFixed(2)} at market rather than $${posted.toFixed(2)}`,
+    )
+  }
+  if (priced.usd > creditedUsd) {
+    log('PAY', `${watch.id}: ${units} ${known.symbol} is worth $${priced.usd.toFixed(2)}, credited at the $${WATCH.maxCreditPerPaymentUsd} per-payment cap`)
   }
   const payment: WatchPayment = {
     at: new Date().toISOString(),

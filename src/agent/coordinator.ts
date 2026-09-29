@@ -14,6 +14,7 @@ import { activeWatches, budgetOf, houseWatch, matchWatch, watches } from '../cor
 import { addressUrl, buyAndActivate, readTreasury, RefuelError, treasuryAccount, txUrl, type Treasury } from '../chain/refuel.js'
 import { collectPayments } from '../chain/payments.js'
 import { claimCredit, launchConfigured, readLaunch, type LaunchPosition } from '../chain/launchpad.js'
+import { hunchMarket, readHunchMarket, setHunchMarket } from '../chain/rate.js'
 import { DEMO_POSTS, DEMO_SOURCES, fixtureRun, releaseWave, startFixtureRun } from '../demo/fixture.js'
 import { createKey, getBalance, getKeyStatus, keyAnswers, revokeKey as orbioRevoke, topUps, type HeldKey } from '../orbio/keys.js'
 import { budgetLimits, decide } from './budget-policy.js'
@@ -403,6 +404,23 @@ async function launchCheck(): Promise<void> {
     log('ERROR', `could not read the launch position: ${err instanceof Error ? err.message : String(err)}`)
     return launch
   })
+  // Price the token against recent trades, so a posted rate that has drifted cannot be farmed.
+  if (WATCH.usdPerHunch > 0) {
+    const market = await readHunchMarket().catch(() => null)
+    if (market) {
+      const was = hunchMarket()?.stale
+      setHunchMarket(market)
+      if (market.stale && !was) {
+        log(
+          'PAY',
+          `the posted ${LAUNCHPAD.symbol} rate credits $${market.postedUsdPerHunch.toExponential(2)} against a market of ` +
+            `$${market.usdPerHunch.toExponential(2)} (${market.drift.toFixed(2)}× over ${market.trades} trades): payments are being credited at market until it is updated`,
+        )
+      } else if (!market.stale && was) {
+        log('PAY', `the posted ${LAUNCHPAD.symbol} rate is back in line with the market (${market.drift.toFixed(2)}×)`)
+      }
+    }
+  }
   if (state.agent.paused || Date.now() - lastClaimAt < LAUNCHPAD.claimEveryMin * 60_000) return
   lastClaimAt = Date.now()
   await claimCredit().catch((err) => log('ERROR', `launchpad claim failed: ${err instanceof Error ? err.message : String(err)}`))
@@ -609,6 +627,7 @@ export function snapshot() {
         {
           ...LAUNCHPAD,
           position: launch,
+          rate: hunchMarket(),
           tokenUrl: LAUNCHPAD.token ? addressUrl(LAUNCHPAD.token) : null,
           vaultUrl: launch ? addressUrl(launch.receiver) : null,
         }

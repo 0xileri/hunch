@@ -214,6 +214,15 @@
         <span class="mono">agent #${p.agentId}</span>
       </div>
       <div class="muted" style="font-size:.78rem">Trading fees on ${esc(l.symbol)} are collected by the launchpad vault, staked as ORBIO after its ${(p.vaultFeeBps / 100).toFixed(0)}% share, and that stake earns CREDIT the agent claims for itself.</div>
+      ${
+        l.rate
+          ? `<div class="${l.rate.stale ? 'refuel' : ''}" style="margin:8px 0">
+              <span class="badge ${l.rate.stale ? 'bad' : 'ok'}">${l.rate.stale ? 'rate stale' : 'rate in line'}</span>
+              <span class="muted" style="font-size:.78rem">posted $${l.rate.postedUsdPerHunch.toExponential(2)} vs market $${l.rate.usdPerHunch.toExponential(2)} per ${esc(l.symbol)} · ${l.rate.drift.toFixed(2)}× over ${l.rate.trades} trades</span>
+              ${l.rate.stale ? `<div class="muted" style="font-size:.78rem">Payments in ${esc(l.symbol)} are credited at market until the posted rate is updated.</div>` : ''}
+            </div>`
+          : ''
+      }
       <dl class="kv">
         <dt>Staked for this agent</dt><dd>${p.stakedOrbio.toFixed(2)} ORBIO</dd>
         <dt>CREDIT in the wallet</dt><dd>${p.creditHeld ? usd(p.creditHeld, 4) : '—'}</dd>

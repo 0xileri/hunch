@@ -133,6 +133,8 @@ export const WATCH = {
   hunchBonus: num('WATCH_HUNCH_BONUS', 1.15),
   /** Most one payment may credit, whatever it was paid in. A backstop against a stale rate. */
   maxCreditPerPaymentUsd: num('WATCH_MAX_CREDIT_PER_PAYMENT_USD', 100),
+  /** Above this much posted-over-market, payments in the token are credited at market instead. */
+  rateDriftMax: num('WATCH_RATE_DRIFT_MAX', 1.25),
 }
 
 /**
@@ -145,6 +147,12 @@ export const LAUNCHPAD = {
   symbol: process.env.HUNCH_TOKEN_SYMBOL ?? 'HUNCH',
   /** Try a claim at most this often; rewards settle hourly. */
   claimEveryMin: num('LAUNCHPAD_CLAIM_EVERY_MIN', 60),
+  /** The pool the token trades in, paired with ORBIO. Used to price recent trades. */
+  pool: (process.env.HUNCH_POOL ?? '0x592a84afd5a7daf1ea4d46aa6166b71c6e05d0f0').trim() || null,
+  /** ORBIO's dollar price, posted by the operator; the other half of pricing the token. */
+  orbioUsd: num('ORBIO_USD', 0.07144),
+  /** How far back to look for trades. The chain runs about ten blocks a second. */
+  rateWindowBlocks: num('LAUNCHPAD_RATE_WINDOW_BLOCKS', 150_000),
   enabled: process.env.LAUNCHPAD !== 'off',
 }
 
