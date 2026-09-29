@@ -59,6 +59,18 @@ app.get('/brand/:file', (c) => {
 app.get('/favicon.ico', (c) => c.redirect('/brand/icon-32.png', 301))
 app.get('/app.js', (c) => c.body(APP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
 app.get('/app.css', (c) => c.body(APP_CSS, 200, { 'content-type': 'text/css; charset=utf-8' }))
+// A cheap liveness check for the platform. It answers as soon as this process can serve, which is
+// what lets a new container take over before the old one is stopped: /api/status serialises the
+// whole agent and is far too heavy to poll. It reports readiness, not whether the agent is busy.
+app.get('/healthz', (c) =>
+  c.json({
+    ok: true,
+    uptimeSec: Math.round(process.uptime()),
+    paused: state.agent.paused,
+    scans: state.agent.scans,
+  }),
+)
+
 app.get('/api/state', (c) => c.json(snapshot()))
 app.get('/api/status', (c) => c.json(snapshot()))
 app.get('/api/signals', (c) => c.json(snapshot().signals))
