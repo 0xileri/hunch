@@ -218,7 +218,7 @@
         l.rate
           ? `<div class="${l.rate.stale ? 'refuel' : ''}" style="margin:8px 0">
               <span class="badge ${l.rate.stale ? 'bad' : 'ok'}">${l.rate.stale ? 'rate stale' : 'rate in line'}</span>
-              <span class="muted" style="font-size:.78rem">posted $${l.rate.postedUsdPerHunch.toExponential(2)} vs market $${l.rate.usdPerHunch.toExponential(2)} per ${esc(l.symbol)} · ${l.rate.drift.toFixed(2)}× over ${l.rate.trades} trades</span>
+              <span class="muted" style="font-size:.78rem">posted $${l.rate.postedUsdPerHunch.toExponential(2)} vs market $${l.rate.usdPerHunch.toExponential(2)} per ${esc(l.symbol)} · ${l.rate.drift.toFixed(2)}× over ${l.rate.trades} trades · ORBIO $${l.rate.orbioUsd.toFixed(5)}${l.rate.orbioUsdFrom === 'chain' ? ` from ${l.rate.orbioSamples} trades` : ' posted'}</span>
               ${l.rate.stale ? `<div class="muted" style="font-size:.78rem">Payments in ${esc(l.symbol)} are credited at market until the posted rate is updated.</div>` : ''}
             </div>`
           : ''

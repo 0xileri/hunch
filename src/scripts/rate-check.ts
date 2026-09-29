@@ -14,7 +14,7 @@ if (!m) {
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`
 console.log(`trades sampled   ${m.trades}`)
 console.log(`HUNCH per ORBIO  ${m.hunchPerOrbio.toFixed(0)}`)
-console.log(`ORBIO posted     $${m.orbioUsd}`)
+console.log(`ORBIO            $${m.orbioUsd.toFixed(5)} (${m.orbioUsdFrom === 'chain' ? `${m.orbioSamples} trades on chain` : 'posted by hand'})`)
 console.log(`market per HUNCH $${m.usdPerHunch.toExponential(3)}`)
 console.log(`posted per HUNCH $${m.postedUsdPerHunch.toExponential(3)} (rate $${WATCH.usdPerHunch} × ${WATCH.hunchBonus} bonus)`)
 console.log(`drift            ${m.drift.toFixed(3)} · limit ${WATCH.rateDriftMax}`)

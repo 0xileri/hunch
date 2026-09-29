@@ -19,7 +19,8 @@
     "watch:check": "tsx src/scripts/watch-check.ts",
     "pay:build": "tsx src/scripts/pay-build.ts",
     "pay:deploy": "tsx src/scripts/pay-deploy.ts",
-    "rate:check": "tsx src/scripts/rate-check.ts"
+    "rate:check": "tsx src/scripts/rate-check.ts",
+    "orbio:price": "tsx src/scripts/orbio-price.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
