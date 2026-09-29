@@ -195,7 +195,7 @@ export function paymentInstructions(watch: Watch) {
     usdPerUnit: WATCH.usdPerUsdg,
     alsoAccepts: Object.entries(paymentTokens())
       .filter(([addr]) => addr !== CONTRACTS.usdg.toLowerCase())
-      .map(([addr, t]) => ({ token: addr, symbol: t.symbol, usdPerUnit: t.usdPerUnit })),
+      .map(([addr, t]) => ({ token: addr, symbol: t.symbol, usdPerUnit: t.usdPerUnit, decimals: t.decimals })),
     watchIdBytes32: watchIdToBytes32(watch.id),
     steps: address
       ? [

@@ -55,6 +55,7 @@
     $('wid').textContent = pay.watchIdBytes32
     $('status-link').href = `/watch?id=${body.watch.id}`
     if (pay.calls) $('calldata').textContent = pay.calls.fund
+    if (window.__paySetup) window.__paySetup(pay)
     show($('pay'))
     $('pay').scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -131,4 +132,105 @@
         $('err').textContent = err.message
       })
   }
+})()
+
+// ── paying from a wallet ────────────────────────────────────────────────────────────────────────
+// Two calls, both built here: the token approves the payment contract, then the contract moves the
+// tokens and tags them with this watch. The page never sees a key; the wallet signs each one.
+;(() => {
+  const $ = (id) => document.getElementById(id)
+  const CHAIN = '0x1237' // 4663
+  let pay = null
+  let account = null
+
+  const pad = (hex) => hex.replace(/^0x/, '').toLowerCase().padStart(64, '0')
+  const padAddr = (a) => pad(a)
+  /** A decimal amount in the token's own units, as a hex word. No floats: the string is the truth. */
+  function units(amount, decimals) {
+    const [whole = '0', frac = ''] = String(amount).trim().split('.')
+    if (!/^\d*$/.test(whole) || !/^\d*$/.test(frac)) throw new Error('that is not a number')
+    const padded = (frac + '0'.repeat(decimals)).slice(0, decimals)
+    const value = BigInt((whole || '0') + (padded || '')) 
+    if (value <= 0n) throw new Error('enter an amount above zero')
+    return value
+  }
+  const approveData = (spender, value) => '0x095ea7b3' + padAddr(spender) + pad(value.toString(16))
+  const fundData = (watchId32, token, value) => '0xf8388f0f' + pad(watchId32) + padAddr(token) + pad(value.toString(16))
+
+  const tokens = () => {
+    if (!pay) return []
+    return [{ token: pay.token, symbol: pay.tokenSymbol, decimals: pay.decimals, usdPerUnit: pay.usdPerUnit }, ...(pay.alsoAccepts || [])]
+  }
+  const chosen = () => tokens().find((t) => t.token.toLowerCase() === $('pay-token').value.toLowerCase())
+
+  function worth() {
+    const t = chosen()
+    const raw = $('pay-amount').value
+    if (!t || !raw) return ($('pay-worth').textContent = '')
+    const n = Number(raw)
+    $('pay-worth').textContent =
+      Number.isFinite(n) && n > 0 ? `${n.toLocaleString()} ${t.symbol} buys about $${(n * t.usdPerUnit).toFixed(2)} of investigation budget.` : ''
+  }
+
+  window.__paySetup = (payment) => {
+    pay = payment
+    const select = $('pay-token')
+    if (!select || !pay.ready) return
+    select.innerHTML = tokens().map((t) => `<option value="${t.token}">${t.symbol}</option>`).join('')
+    $('pay-amount').value = String(pay.minAmount)
+    worth()
+  }
+
+  document.addEventListener('input', (e) => {
+    if (e.target && (e.target.id === 'pay-amount' || e.target.id === 'pay-token')) worth()
+  })
+
+  async function rpcWait(hash) {
+    for (let i = 0; i < 60; i++) {
+      const receipt = await window.ethereum.request({ method: 'eth_getTransactionReceipt', params: [hash] }).catch(() => null)
+      if (receipt) return receipt
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    throw new Error('the transaction is taking longer than expected; check your wallet')
+  }
+
+  const tx = (url, hash) => `<a href="https://robinhoodchain.blockscout.com/tx/${hash}" target="_blank" rel="noopener">${hash.slice(0, 12)}…</a>`
+
+  $('pay-go')?.addEventListener('click', async () => {
+    const button = $('pay-go')
+    $('pay-err').textContent = ''
+    if (!window.ethereum) return ($('pay-err').textContent = 'No wallet in this browser. The calls are listed above to send by hand.')
+    try {
+      button.disabled = true
+      if (!account) {
+        ;[account] = await window.ethereum.request({ method: 'eth_requestAccounts' })
+        try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN }] }) } catch {}
+        button.textContent = 'Pay'
+        $('pay-status').textContent = `Connected as ${account.slice(0, 8)}…`
+        return
+      }
+      const t = chosen()
+      const value = units($('pay-amount').value, t.decimals)
+
+      $('pay-status').innerHTML = `1 of 2: approving ${t.symbol}…`
+      const approveHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: account, to: t.token, data: approveData(pay.contract, value), value: '0x0' }],
+      })
+      $('pay-status').innerHTML = `1 of 2: approving ${t.symbol} ${tx(0, approveHash)}`
+      await rpcWait(approveHash)
+
+      $('pay-status').innerHTML = `2 of 2: funding the watch…`
+      const fundHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: account, to: pay.contract, data: fundData(pay.watchIdBytes32, t.token, value), value: '0x0' }],
+      })
+      $('pay-status').innerHTML = `Paid ${tx(0, fundHash)}. The agent credits it on its next scan, within a minute or two.`
+      await rpcWait(fundHash)
+    } catch (err) {
+      $('pay-err').textContent = err.message || String(err)
+    } finally {
+      button.disabled = false
+    }
+  })
 })()

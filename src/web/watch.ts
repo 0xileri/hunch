@@ -118,7 +118,18 @@ export function watchPage(): string {
         <code class="mono wrap-any" id="calldata"></code>
       </li>
     </ol>
-    <p class="muted">Paying from the address you gave keeps this watch tied to you. Nothing is held by the contract: the USDG goes straight to Hunch's treasury, which buys the inference credit.</p>
+    <div class="w-payform">
+      <h3>Pay from your wallet</h3>
+      <div class="w-payrow">
+        <label>Token<select id="pay-token"></select></label>
+        <label>Amount<input id="pay-amount" inputmode="decimal" placeholder="2"></label>
+        <button class="primary" id="pay-go">Connect wallet</button>
+      </div>
+      <p class="muted" id="pay-worth"></p>
+      <p class="err" id="pay-err" role="alert"></p>
+      <p class="muted" id="pay-status"></p>
+    </div>
+    <p class="muted">Two calls: the token approves this contract, then the contract moves it. Paying from the address you gave keeps this watch tied to you. Nothing is held by the contract — it goes straight to Hunch's treasury, which buys the inference credit.</p>
     <p><a id="status-link" href="#">Follow this watch</a></p>
   </section>
 

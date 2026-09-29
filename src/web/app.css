@@ -511,3 +511,14 @@ footer { margin-top: 64px; border-top: 1px solid var(--line); background: color-
   .w-grid, .w-how { grid-template-columns: 1fr; }
   .watch-page .wrap { padding-top: 84px; }
 }
+
+.w-payform { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.w-payform h3 { margin: 0 0 10px; font-size: .95rem; }
+.w-payrow { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.w-payrow label { display: grid; gap: 6px; font-size: .85rem; font-weight: 500; }
+.w-payrow select, .w-payrow input {
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line-2);
+  background: var(--panel-2); color: var(--text); font: inherit; font-size: .95rem; min-width: 120px;
+}
+.w-payrow button { white-space: nowrap; }
+@media (max-width: 560px) { .w-payrow { flex-direction: column; align-items: stretch; } }
