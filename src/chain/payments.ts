@@ -11,7 +11,7 @@ import { save, state } from '../core/state.js'
 import { budgetOf, watchById, watches } from '../core/watches.js'
 import type { Watch, WatchPayment } from '../core/types.js'
 import { CONTRACTS, publicClient, txUrl } from './refuel.js'
-import { clampToMarket } from './rate.js'
+import { hunchMarket, priceInToken } from './rate.js'
 
 export const PAY_ABI = parseAbi([
   'event Funded(bytes32 indexed watchId, address indexed payer, address indexed token, uint256 amount)',
@@ -36,11 +36,12 @@ export function paymentTokens(): Record<string, PaymentToken> {
   const tokens: Record<string, PaymentToken> = {
     [CONTRACTS.usdg.toLowerCase()]: { symbol: 'USDG', decimals: 6, usdPerUnit: WATCH.usdPerUsdg },
   }
-  if (LAUNCHPAD.token && WATCH.usdPerHunch > 0) {
+  if (LAUNCHPAD.token && (WATCH.usdPerHunch > 0 || hunchMarket())) {
+    const market = hunchMarket()
     tokens[LAUNCHPAD.token.toLowerCase()] = {
       symbol: LAUNCHPAD.symbol,
       decimals: 18,
-      usdPerUnit: WATCH.usdPerHunch * WATCH.hunchBonus,
+      usdPerUnit: (market?.usdPerHunch ?? WATCH.usdPerHunch) * WATCH.hunchBonus,
     }
   }
   return tokens
@@ -135,15 +136,15 @@ async function creditFromLog(entry: FundedLog): Promise<WatchPayment | null> {
   }
 
   const units = Number(formatUnits(amount, known.decimals))
-  const posted = units * known.usdPerUnit
-  // A posted rate that has drifted above market credits what the tokens are worth instead.
-  const priced = clampToMarket(known.symbol, units, posted)
+  const isOwnToken = known.symbol === LAUNCHPAD.symbol
+  const priced = isOwnToken ? priceInToken(known.symbol, units) : { usd: units * known.usdPerUnit, from: 'posted' as const }
   const creditedUsd = Math.round(Math.min(priced.usd, WATCH.maxCreditPerPaymentUsd) * 1e6) / 1e6
-  if (priced.clamped) {
+  if (isOwnToken) {
+    const market = hunchMarket()
     log(
       'PAY',
-      `${watch.id}: the posted ${known.symbol} rate is above market, so ${units} ${known.symbol} credits ` +
-        `$${priced.usd.toFixed(2)} at market rather than $${posted.toFixed(2)}`,
+      `${watch.id}: ${units} ${known.symbol} priced ${priced.from === 'market' ? `at market ($${market?.usdPerHunch.toExponential(3)} each, ${market?.trades} trades)` : 'at the posted rate'} ` +
+        `plus the ${Math.round((WATCH.hunchBonus - 1) * 100)}% bonus → $${priced.usd.toFixed(2)}`,
     )
   }
   if (priced.usd > creditedUsd) {

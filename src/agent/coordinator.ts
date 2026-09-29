@@ -406,7 +406,10 @@ async function launchCheck(): Promise<void> {
   })
   // Price the token against recent trades, so a posted rate that has drifted cannot be farmed.
   if (WATCH.usdPerHunch > 0) {
-    const market = await readHunchMarket().catch(() => null)
+    const market = await readHunchMarket().catch((err) => {
+      log('ERROR', `could not price ${LAUNCHPAD.symbol} against the market: ${err instanceof Error ? err.message : String(err)}`)
+      return null
+    })
     if (market) {
       const was = hunchMarket()?.stale
       setHunchMarket(market)

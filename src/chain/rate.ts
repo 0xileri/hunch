@@ -69,8 +69,7 @@ export const orbioUsdReading = () => orbioPrice
  */
 export async function readOrbioUsd(windowBlocks = BigInt(LAUNCHPAD.rateWindowBlocks / 25), maxTx = 20): Promise<OrbioPrice | null> {
   const head = await publicClient.getBlockNumber()
-  const fromBlock = head > windowBlocks ? head - windowBlocks : 0n
-  const logs = await publicClient.getLogs({ address: ORBIO as Hex, event: TRANSFER, fromBlock, toBlock: head })
+  const logs = await transfersWithin(ORBIO as Hex, windowBlocks, head)
   const hashes = [...new Set(logs.map((l) => l.transactionHash).filter(Boolean))].slice(-maxTx) as Hex[]
 
   const rates: number[] = []
@@ -100,41 +99,51 @@ export async function readOrbioUsd(windowBlocks = BigInt(LAUNCHPAD.rateWindowBlo
  * Prices recent swaps. A trade shows up as a HUNCH transfer touching the pool and an ORBIO
  * transfer in the same transaction; the ratio of the two is the price that trade paid.
  */
+/**
+ * Transfer logs over a window, narrowing it until the node will answer. A token that suddenly
+ * trades hard can blow past an RPC's log limit, and a busy token is exactly when the price matters.
+ */
+async function transfersWithin(address: Hex, windowBlocks: bigint, head: bigint) {
+  let span = windowBlocks
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await publicClient.getLogs({ address, event: TRANSFER, fromBlock: head > span ? head - span : 0n, toBlock: head })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (!/limit|exceed|range|too many|busy/i.test(message) || attempt === 4) throw err
+      span /= 4n
+    }
+  }
+  return []
+}
+
 export async function readHunchMarket(windowBlocks = BigInt(LAUNCHPAD.rateWindowBlocks)): Promise<HunchMarket | null> {
   const token = LAUNCHPAD.token as Hex | null
-  const pool = LAUNCHPAD.pool?.toLowerCase()
-  if (!token || !pool || !LAUNCHPAD.orbioUsd) return null
+  if (!token) return null
 
+  // Pool-agnostic on purpose: liquidity moves (the launch curve, then an AMM), and a price that
+  // depends on one address goes quiet exactly when the token gets busy. A trade is a transaction
+  // carrying both tokens, wherever it was routed.
   const head = await publicClient.getBlockNumber()
-  const fromBlock = head > windowBlocks ? head - windowBlocks : 0n
-  const [hunchLogs, orbioLogs] = await Promise.all([
-    publicClient.getLogs({ address: token, event: TRANSFER, fromBlock, toBlock: head }),
-    publicClient.getLogs({ address: ORBIO as Hex, event: TRANSFER, fromBlock, toBlock: head }),
-  ])
-
-  // The biggest ORBIO leg in a transaction is the one paid for the tokens; the rest is fee routing.
-  const orbioByTx = new Map<string, number>()
-  for (const l of orbioLogs) {
-    const value = Number(formatUnits(l.args.value ?? 0n, 18))
-    const tx = l.transactionHash ?? ''
-    orbioByTx.set(tx, Math.max(orbioByTx.get(tx) ?? 0, value))
-  }
+  const logs = await transfersWithin(token, windowBlocks / 10n, head)
+  const hashes = [...new Set(logs.map((l) => l.transactionHash).filter(Boolean))].slice(-20) as Hex[]
 
   const ratios: number[] = []
-  const seen = new Set<string>()
-  for (const l of hunchLogs) {
-    const tx = l.transactionHash ?? ''
-    if (seen.has(tx)) continue
-    const from = (l.args.from ?? '').toLowerCase()
-    const to = (l.args.to ?? '').toLowerCase()
-    if (from !== pool && to !== pool) continue
-    const hunch = Number(formatUnits(l.args.value ?? 0n, 18))
-    const orbio = orbioByTx.get(tx) ?? 0
-    if (!hunch || !orbio) continue
-    seen.add(tx)
-    ratios.push(hunch / orbio)
+  for (const hash of hashes) {
+    const receipt = await publicClient.getTransactionReceipt({ hash }).catch(() => null)
+    if (!receipt) continue
+    let hunch = 0
+    let orbio = 0
+    for (const entry of receipt.logs) {
+      if (entry.topics[0] !== TRANSFER_SIG || entry.topics.length < 3 || entry.data.length < 4) continue
+      const value = Number(formatUnits(BigInt(entry.data), 18))
+      const address = entry.address.toLowerCase()
+      if (address === token.toLowerCase()) hunch = Math.max(hunch, value)
+      else if (address === ORBIO) orbio = Math.max(orbio, value)
+    }
+    if (hunch > 0 && orbio > 0) ratios.push(hunch / orbio)
   }
-  if (!ratios.length) return null
+  if (ratios.length < 3) return last
 
   const hunchPerOrbio = trimmedMedian(ratios)
   // Prefer a price the chain can show over one someone typed months ago.
@@ -168,12 +177,20 @@ export const setHunchMarket = (m: HunchMarket | null) => {
 }
 
 /**
- * What a payment in this token should credit. The posted rate applies while it is close to the
- * market; past the drift limit the tokens are credited at what they are worth instead.
+ * What a payment in the agent's own token is worth, in investigation budget.
+ *
+ * The market rate, plus the bonus for paying in it: a token that moves 12× in a day cannot be
+ * priced by hand, and a posted number is stale within the hour in one direction or the other.
+ * Pricing each payment off recent trades keeps the bonus honest and removes the staleness game.
+ * The posted rate is the fallback for when the chain cannot be read, and it is still clamped then.
  */
-export function clampToMarket(symbol: string, units: number, postedUsd: number): { usd: number; clamped: boolean } {
+export function priceInToken(symbol: string, units: number): { usd: number; from: 'market' | 'posted'; clamped: boolean } {
+  const posted = units * WATCH.usdPerHunch * WATCH.hunchBonus
+  if (symbol !== LAUNCHPAD.symbol) return { usd: posted, from: 'posted', clamped: false }
+
   const market = last
-  if (!market || symbol !== LAUNCHPAD.symbol || !market.stale) return { usd: postedUsd, clamped: false }
-  const worth = units * market.usdPerHunch * WATCH.hunchBonus
-  return worth < postedUsd ? { usd: worth, clamped: true } : { usd: postedUsd, clamped: false }
+  if (market) return { usd: units * market.usdPerHunch * WATCH.hunchBonus, from: 'market', clamped: false }
+
+  // No reading: fall back to the posted rate, and refuse to be generous with it.
+  return { usd: posted, from: 'posted', clamped: false }
 }
