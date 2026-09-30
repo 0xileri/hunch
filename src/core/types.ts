@@ -1,7 +1,7 @@
 // The shapes everything else passes around. Money is always USD as Orbio reports it: the account
 // balance is dollars of credit, and a call costs its tokens at the gateway's own per-token prices.
 
-export type SourceType = 'rss' | 'reddit' | 'demo'
+export type SourceType = 'rss' | 'reddit' | 'demo' | 'search' | 'social'
 
 export interface Source {
   id: string
@@ -276,6 +276,8 @@ export interface Watch {
   expiresAt: string | null
   fundedUsd: number
   spentUsd: number
+  /** Part of spentUsd that went on looking for the entity rather than investigating it. */
+  searchedUsd?: number
   payments: WatchPayment[]
 }
 

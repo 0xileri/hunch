@@ -51,7 +51,8 @@ async function orbio(): Promise<Client> {
   return client
 }
 
-async function callTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
+/** Calls any tool on the agent's own Orbio session. Metered tools spend the real balance. */
+export async function callTool<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   let attempt = 0
   for (;;) {
     try {

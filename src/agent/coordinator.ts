@@ -23,6 +23,7 @@ import { planInvestigation, postsOf, runInvestigation } from './investigation.js
 import { assignToCluster } from '../watcher/cluster.js'
 import { claimText, embed } from '../watcher/embed.js'
 import { measure } from '../watcher/score.js'
+import { searchForWatches, type SearchReport } from '../watcher/search.js'
 import { fetchAll, type FetchReport } from '../watcher/sources.js'
 
 export type Phase =
@@ -38,6 +39,7 @@ const runtime = {
   keyState: 'none' as KeyState,
   orbio: { connected: false, error: null as string | null },
   sources: [] as FetchReport[],
+  searches: [] as SearchReport[],
   scanning: false,
   investigating: null as string | null,
   demo: { running: false, wave: 0, lastStartedAt: 0 },
@@ -186,8 +188,15 @@ async function scanOnce(reason: string): Promise<void> {
   runtime.scanning = true
   setPhase('SCANNING')
   try {
-    const { items: raw, reports } = await fetchAll()
+    const { items: feedItems, reports } = await fetchAll()
     runtime.sources = reports
+    // Feeds are the same for everyone; a paid watch also gets looked for by name, on its own budget.
+    const found = await searchForWatches(activeWatches().filter((w) => !w.house)).catch((err) => {
+      log('ERROR', `searching for watched entities failed: ${err instanceof Error ? err.message : String(err)}`)
+      return { items: [], reports: [] }
+    })
+    runtime.searches = found.reports
+    const raw = [...feedItems, ...found.items]
     const fresh = raw.filter((r) => !state.items.has(r.id))
     const vectors = await embed(fresh.map(claimText))
     const touched = new Set<SignalCluster>()
@@ -603,6 +612,7 @@ export function snapshot() {
       investigations: state.investigations.filter((i) => i.watchId === w.id).length,
     })),
     watchPolicy: { ...WATCH },
+    searches: runtime.searches,
     policy: { ...POLICY, ...limits, models: MODELS, signal: SIGNAL },
     market: { ...MARKET, workers: marketView() },
     schedule: { enabled: SCHEDULE.enabled, scanEveryMin: SCHEDULE.scanEveryMin, demoWaveDelaySec: SCHEDULE.demoWaveDelaySec },

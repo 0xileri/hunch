@@ -156,5 +156,30 @@ export const LAUNCHPAD = {
   enabled: process.env.LAUNCHPAD !== 'off',
 }
 
+/**
+ * Looking for a watched entity where its name actually appears. The four public feeds are a narrow
+ * window: a small project is never in them, so a paid watch would see nothing. Orbio meters web and
+ * social search in CREDIT, so the agent can go looking — on its own key, against the watch's own
+ * budget, under a hard cap per scan.
+ */
+export const SEARCH = {
+  enabled: process.env.SEARCH !== 'off',
+  /** How often a watch is searched for, at most. Looking is metered, so this is hours, not minutes. */
+  everyMin: num('SEARCH_EVERY_MIN', 240),
+  /** Results per query. Orbio charges per result, so this is what sets the price of a round. */
+  limit: num('SEARCH_LIMIT', 4),
+  /** Queries per round. The entity's own name is the one that matters; terms are for matching. */
+  maxTerms: num('SEARCH_MAX_TERMS', 1),
+  /** Most one round may cost, whatever the results. */
+  maxCostPerRoundUsd: num('SEARCH_MAX_COST_PER_ROUND_USD', 0.02),
+  /**
+   * The share of a watch's money that may ever go on looking. The rest is for proof: a watch that
+   * spends its budget searching and has nothing left to investigate with has sold nothing.
+   */
+  shareOfBudget: num('SEARCH_SHARE_OF_BUDGET', 0.3),
+  /** Searching stops when a watch has less than this left. */
+  minRemainingUsd: num('SEARCH_MIN_REMAINING_USD', 0.1),
+}
+
 export const ADMIN_TOKEN = process.env.ADMIN_TOKEN
 export const REPO_URL = process.env.REPO_URL
