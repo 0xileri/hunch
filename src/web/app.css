@@ -528,3 +528,19 @@ footer { margin-top: 64px; border-top: 1px solid var(--line); background: color-
 .w-seen .claim { margin: 6px 0 4px; font-size: .92rem; line-height: 1.45; }
 .w-seen .m { color: var(--faint); font-size: .78rem; line-height: 1.5; }
 .w-status h3 { margin: 18px 0 0; font-size: .95rem; }
+
+/* ── the changelog ──────────────────────────────────────────────────────────────────────────── */
+.cl { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.cl-item { display: grid; grid-template-columns: 190px 1fr; gap: 24px; padding: 22px 0; border-top: 1px solid var(--line); }
+.cl-when time { font-family: var(--mono); font-size: .8rem; color: var(--faint); letter-spacing: .02em; }
+.cl-what h2 { margin: 0 0 10px; font-size: 1.15rem; letter-spacing: -.02em; }
+.cl-what p { margin: 0 0 10px; color: var(--muted); line-height: 1.6; font-size: .95rem; max-width: 68ch; }
+.cl-facts { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.cl-facts li {
+  font-family: var(--mono); font-size: .76rem; color: var(--accent-2);
+  background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 999px; padding: 5px 12px;
+}
+@media (max-width: 760px) {
+  .cl-item { grid-template-columns: 1fr; gap: 8px; }
+  .cl-when time { font-size: .74rem; }
+}

@@ -163,7 +163,7 @@ export function dashboardPage(): string {
       <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
       <p>Free hunches. Paid proof.<br>An agent on its own Orbio key that decides when information is worth paying for.</p>
     </div>
-    <div class="foot-col"><h4>Explore</h4><a href="#signal">Live console</a><a href="/demo">The demo fixture</a><a href="/api/status">Status API (JSON)</a></div>
+    <div class="foot-col"><h4>Explore</h4><a href="#signal">Live console</a><a href="/changelog">What changed</a><a href="/demo">The demo fixture</a><a href="/api/status">Status API (JSON)</a></div>
     <div class="foot-col"><h4>Proof</h4>${treasuryAccount() ? `<a href="${esc(addressUrl(treasuryAccount()!.address))}">Treasury on Blockscout</a>` : ''}${REPO_URL ? `<a href="${esc(REPO_URL)}">Source on GitHub</a>` : ''}<a href="https://www.orbio.so/protocol/agents">Orbio's CREDIT protocol</a></div>
     <div class="foot-col"><h4>Built with</h4><span>Orbio gateway and MCP</span><span>Robinhood Chain</span><span>all-MiniLM-L6-v2, locally</span></div>
   </div>
