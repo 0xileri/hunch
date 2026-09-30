@@ -136,6 +136,7 @@ export function watchPage(): string {
   <section class="card w-status" id="status" hidden>
     <h2>Watch <span class="mono" id="st-id"></span> <span class="badge" id="st-state">pending</span></h2>
     <div class="stats" id="st-stats"></div>
+    <div id="st-seen"></div>
     <div id="st-invs"></div>
   </section>
 </main>

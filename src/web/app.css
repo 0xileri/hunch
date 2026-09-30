@@ -522,3 +522,9 @@ footer { margin-top: 64px; border-top: 1px solid var(--line); background: color-
 }
 .w-payrow button { white-space: nowrap; }
 @media (max-width: 560px) { .w-payrow { flex-direction: column; align-items: stretch; } }
+
+.w-seen { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 12px; }
+.w-seen li { border-left: 2px solid var(--line-2); padding: 8px 0 8px 12px; }
+.w-seen .claim { margin: 6px 0 4px; font-size: .92rem; line-height: 1.45; }
+.w-seen .m { color: var(--faint); font-size: .78rem; line-height: 1.5; }
+.w-status h3 { margin: 18px 0 0; font-size: .95rem; }

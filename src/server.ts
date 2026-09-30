@@ -110,9 +110,34 @@ app.get('/api/watch/:id', async (c) => {
     await refreshPayments().catch((err) => log('ERROR', `payment check failed: ${failure(err)}`))
     watch = watchById(c.req.param('id')) ?? watch
   }
+  // What the agent has seen for this watch, including what it decided was not worth paying for.
+  // A quiet week is the product working, but only if the customer can see the work.
+  const seen = state.clusters
+    .filter((cl) => cl.state !== 'archived' && cl.decisions.at(-1)?.watchId === watch.id)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 12)
+    .map((cl) => {
+      const d = cl.decisions.at(-1)!
+      const items = cl.itemIds.map((id) => state.items.get(id)).filter((i): i is NonNullable<typeof i> => !!i)
+      return {
+        id: cl.id,
+        claim: cl.representativeClaim,
+        at: cl.updatedAt,
+        score: d.score,
+        action: d.action,
+        reason: d.reason,
+        mentions: d.metrics.mentions,
+        sources: [...new Set(items.map((i) => i.sourceName))],
+        links: items.map((i) => i.url).filter(Boolean).slice(0, 4),
+        investigationId: cl.investigationId,
+      }
+    })
+
   return c.json({
     watch: publicWatch(watch),
     payment: paymentInstructions(watch),
+    seen,
+    searchedUsd: watch.searchedUsd ?? 0,
     investigations: state.investigations.filter((i) => i.watchId === watch.id).map((i) => ({
       id: i.id,
       at: i.createdAt,

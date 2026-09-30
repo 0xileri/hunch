@@ -104,6 +104,25 @@
       .map(([label, value]) => `<div class="stat"><div class="v">${value}</div><div class="l">${label}</div></div>`)
       .join('')
 
+    // What it saw, including what it decided not to pay for: a quiet week is the product working.
+    const seen = body.seen || []
+    const badge = (a) => (a === 'INVESTIGATE' ? 'ok' : a === 'WATCH' ? 'busy' : '')
+    $('st-seen').innerHTML = seen.length
+      ? `<h3>What it has seen <span class="muted">· ${seen.length} claim${seen.length === 1 ? '' : 's'}, ${usd(body.searchedUsd || 0, 4)} spent looking</span></h3>
+         <ul class="w-seen">${seen
+           .map(
+             (s) =>
+               `<li><span class="badge ${badge(s.action)}">${s.score.toFixed(2)} ${s.action}</span>
+                 <div class="claim">${s.claim}</div>
+                 <div class="m">${s.mentions} mention${s.mentions === 1 ? '' : 's'} · ${s.sources.join(', ')} · ${new Date(s.at).toLocaleString()}
+                 ${s.links.length ? ` · <a href="${s.links[0]}" target="_blank" rel="noopener">open</a>` : ''}</div>
+                 <div class="m">${s.reason}</div></li>`,
+           )
+           .join('')}</ul>`
+      : w.status === 'active'
+        ? `<h3>What it has seen</h3><p class="muted">Nothing yet. It looks for ${w.terms.map((t) => `"${t}"`).join(', ')} every few hours and reads its public feeds every 15 minutes.</p>`
+        : ''
+
     $('st-invs').innerHTML = body.investigations.length
       ? `<ul class="w-invs">${body.investigations
           .map(
