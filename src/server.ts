@@ -55,7 +55,7 @@ for (const page of Object.keys(SECTION_PAGES) as SectionPage[]) app.get(`/${page
 app.get('/watch', (c) => c.html(withSiteNavigation(watchPage(), '/watch')))
 app.get('/changelog', (c) => c.html(withSiteNavigation(changelogPage(), '/changelog')))
 app.get('/airdrop', (c) => c.html(withSiteNavigation(airdropPage(), '/airdrop')))
-app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
+app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
 app.get('/api/airdrop', (c) => c.json(AIRDROP))
 app.get('/api/airdrop/wallet/:wallet', (c) => {
   c.header('cache-control', 'no-store')

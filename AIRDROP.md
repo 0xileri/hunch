@@ -23,3 +23,9 @@ Operator-only review endpoint: `POST /api/admin/airdrop/:id/review` with the exi
 Approved wallets see a downloadable 1200×675 PNG approval card and an X post composer. The post naturally tags @hunchmode and @orbiodotso, with no hashtags. A confirmed payout changes the card to claimed wording. X intents do not attach media automatically; supporters download and attach the image themselves.
 
 Operator-only payout confirmation: `POST /api/admin/airdrop/:id/payout` with `{ "txHash": "0x…" }`. The server requires a successful Robinhood Chain receipt, six confirmations, and an exact HUNCH transfer from the configured treasury to the approved wallet. A transaction can be recorded only once. This endpoint does not send tokens. Public endpoints cannot approve entries or mark them claimed.
+
+## Wallet connection
+
+Connect opens a visible picker using EIP-6963 discovery, with legacy injected-provider fallback. The chosen provider handles both connection and message signing. Multiple installed wallets do not silently determine which provider signs. Account changes and disconnection clear the connected state. Cancelled and pending popup requests are shown beside the connection button and inside the picker. The script is served without caching and uses a versioned URL.
+
+Browsers without wallet injection cannot sign directly. The picker offers MetaMask/Trust Wallet app browser links and a copyable page URL for opening in a wallet-enabled browser. It does not implement WalletConnect QR pairing. Do not describe those app links as a successful connection until the wallet actually authorizes the site.
