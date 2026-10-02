@@ -1,0 +1,17 @@
+export const SITE_LINKS = [
+  ['/', 'Home'], ['/how-it-works', 'How it works'], ['/signals', 'Signals'], ['/investigations', 'Investigations'], ['/watches', 'Watches'],
+  ['/market', 'Market'], ['/fuel', 'Fuel'], ['/activity', 'Activity'], ['/spend', 'Spend'],
+  ['/sources', 'Sources'], ['/background', 'Background'], ['/airdrop', 'AIRDROP'], ['/changelog', 'Updates'],
+] as const
+
+export function siteNavigation(path: string) {
+  return `<header class="site-header"><div class="site-top"><a href="/" aria-label="Hunch home"><img class="site-logo-dark" src="/brand/logo-dark.svg" alt="Hunch"><img class="site-logo-light" src="/brand/logo-light.svg" alt="Hunch"></a><a class="site-watch" href="/watch">Open a watch →</a></div><nav class="site-links" aria-label="Main navigation">${SITE_LINKS.map(([href, label]) => `<a href="${href}"${path === href ? ' aria-current="page"' : ''}>${label}</a>`).join('')}</nav></header>`
+}
+
+export const SITE_CSS = `
+.site-header{max-width:1360px;margin:auto;padding:20px 28px;border-bottom:1px solid var(--line)}.site-top{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:18px}.site-top img{width:145px;display:block}.site-top .site-logo-light{display:none}:root[data-theme=light] .site-top .site-logo-light{display:block}:root[data-theme=light] .site-top .site-logo-dark{display:none}.site-watch{color:var(--accent);font-weight:600;font-size:14px}.site-links{display:flex;gap:6px;flex-wrap:wrap}.site-links a{padding:7px 10px;border-radius:8px;text-decoration:none;font-size:13px;color:var(--muted)}.site-links a:hover,.site-links a[aria-current=page]{background:var(--accent-soft);color:var(--accent)}.site-title{margin:42px 0 25px}.site-title h1{font-size:clamp(34px,5vw,54px);letter-spacing:-.045em;margin:12px 0}.site-title p{max-width:720px;color:var(--muted);line-height:1.7}.site-main{max-width:1120px;margin:auto;padding:0 28px 50px}.site-controls{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.site-panels{display:grid;gap:24px}.site-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:26px 0}.site-tile{padding:22px;border:1px solid var(--line);background:var(--panel);border-radius:16px;text-decoration:none;color:var(--text)}.site-tile strong{display:block;font-size:18px;margin-bottom:10px}.site-tile p{color:var(--muted);font-size:14px;line-height:1.6;margin:0}.site-footer{padding:25px 28px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;text-align:center}.site-footer a{color:var(--accent)}.site-hero{padding:48px 0 12px}.site-hero h1{font-size:clamp(48px,7vw,84px);line-height:1.03;letter-spacing:-.055em;margin:20px 0}.site-hero p{max-width:700px;color:var(--muted);line-height:1.7;font-size:18px}.site-hero .site-controls a{display:inline-block;padding:14px 20px;border-radius:10px;background:var(--accent);color:var(--on-accent);font-weight:700;text-decoration:none}.site-hero .site-controls a:last-child{background:var(--panel-2);color:var(--text);border:1px solid var(--line-2)}@media(max-width:700px){.site-header{padding:18px 16px}.site-main{padding:0 16px 35px}.site-tiles{grid-template-columns:1fr 1fr}.site-links{gap:3px}.site-links a{padding:7px 8px;font-size:12px}.site-title{margin-top:28px}.site-hero{padding-top:30px}}@media(max-width:420px){.site-tiles{grid-template-columns:1fr}.site-tile{padding:18px}}
+`
+
+export function withSiteNavigation(html: string, path: string) {
+  return html.replace(/<header\b[^>]*>[\s\S]*?<\/header>/, siteNavigation(path)).replace('</head>', `<style>${SITE_CSS}</style></head>`)
+}

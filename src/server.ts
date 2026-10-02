@@ -17,11 +17,13 @@ import { budgetOf, createWatch, watchById, watches, WatchError, type WatchReques
 import type { Watch } from './core/types.js'
 import { demoFeedXml } from './demo/fixture.js'
 import { announcementsPage, demoIndexPage, postPage, statusPage } from './demo/pages.js'
-import { APP_CSS, APP_JS, dashboardPage } from './web/dashboard.js'
+import { APP_CSS, APP_JS } from './web/dashboard.js'
 import { changelogPage } from './web/changelog.js'
 import { ownerPage } from './web/owner.js'
 import { WATCH_JS, watchPage } from './web/watch.js'
 import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
+import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
+import { withSiteNavigation } from './web/navigation.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, createAirdropChallenge, submitAirdrop } from './core/airdrop.js'
 
 const app = new Hono()
@@ -47,10 +49,12 @@ const publicWatch = (w: Watch) => ({
   payments: w.payments,
 })
 
-app.get('/', (c) => c.html(dashboardPage()))
-app.get('/watch', (c) => c.html(watchPage()))
-app.get('/changelog', (c) => c.html(changelogPage()))
-app.get('/airdrop', (c) => c.html(airdropPage()))
+app.get('/', (c) => c.html(sitePage()))
+app.get('/how-it-works', (c) => c.html(howItWorksPage()))
+for (const page of Object.keys(SECTION_PAGES) as SectionPage[]) app.get(`/${page}`, (c) => c.html(sitePage(page)))
+app.get('/watch', (c) => c.html(withSiteNavigation(watchPage(), '/watch')))
+app.get('/changelog', (c) => c.html(withSiteNavigation(changelogPage(), '/changelog')))
+app.get('/airdrop', (c) => c.html(withSiteNavigation(airdropPage(), '/airdrop')))
 app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
 app.get('/api/airdrop', (c) => c.json(AIRDROP))
 app.get('/api/airdrop/wallet/:wallet', (c) => {
@@ -91,7 +95,7 @@ app.get('/api/admin/airdrop/entries', (c) => {
   return c.json(airdropReviewEntries())
 })
 // The owner's own settings. No token gate: the contract checks the signature, not this server.
-app.get('/owner', (c) => c.html(ownerPage()))
+app.get('/owner', (c) => c.html(withSiteNavigation(ownerPage(), '/owner')))
 app.get('/watch.js', (c) => c.body(WATCH_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
 // The logo and its exports (brand/): SVG for the page, PNG for favicons and link previews.
 const BRAND_TYPES: Record<string, string> = { svg: 'image/svg+xml', png: 'image/png' }

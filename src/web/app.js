@@ -14,6 +14,7 @@
   const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : null)
   const last = {}
   const set = (id, html) => {
+    if (!$(id)) return
     if (last[id] === html) return
     last[id] = html
     $(id).innerHTML = html
@@ -77,6 +78,7 @@
   }
 
   function action(btn, path, msg) {
+    if (!btn) return
     btn.addEventListener('click', async () => {
       btn.disabled = true
       try {
@@ -489,6 +491,7 @@
   }
 
   function renderKpis() {
+    if (!$('kpi-balance')) return
     const b = S.budget
     const latest = S.balance.latest
     const refuels = (S.fuel && S.fuel.refuels) || []
