@@ -122,7 +122,7 @@ export function dashboardPage(): string {
 <div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
 
 <section class="card reveal" aria-labelledby="supporter-title" style="margin:28px 0;padding:30px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px">
-  <div style="max-width:680px"><span class="eyebrow" style="color:var(--accent)">For our early supporters</span><h2 id="supporter-title" style="margin:12px 0;font-size:28px">$500 in $HUNCH. For the people who backed us.</h2><p style="color:var(--muted);line-height:1.7">Posted about Hunch before October 2 at 11:47 am WAT? Register your existing posts for the supporter airdrop. Allocations are under review.</p></div>
+  <div style="max-width:680px"><span class="eyebrow" style="color:var(--accent)">For our early supporters</span><h2 id="supporter-title" style="margin:12px 0;font-size:28px">$$$ in $HUNCH. For the people who backed us.</h2><p style="color:var(--muted);line-height:1.7">Posted about Hunch before October 2 at 11:47 am WAT? Register your existing posts for the supporter airdrop. Allocations are under review.</p></div>
   <a href="/airdrop" style="display:inline-block;border-radius:10px;padding:14px 22px;background:var(--accent);color:var(--on-accent);font-weight:700">Supporter airdrop →</a>
 </section>
 
