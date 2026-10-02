@@ -6,7 +6,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
 const directory = mkdtempSync(join(tmpdir(), 'hunch-airdrop-'))
 process.env.DATA_DIR = directory
-const { AIRDROP, eligiblePost, createAirdropChallenge, submitAirdrop, airdropStatus } = await import('../core/airdrop.js')
+const { AIRDROP, eligiblePost, createAirdropChallenge, submitAirdrop, airdropStatus, reviewAirdrop, confirmAirdropPayout } = await import('../core/airdrop.js')
 const post = (date: string, handle = 'earlybacker') => `https://x.com/${handle}/status/${(BigInt(Date.parse(date)) - 1288834974657n) << 22n}`
 const account = privateKeyToAccount(generatePrivateKey())
 const other = privateKeyToAccount(generatePrivateKey())
@@ -34,5 +34,14 @@ try {
   assert.equal(AIRDROP.claimsOpen, false)
   assert.ok(!JSON.stringify(status).includes('earlybacker'))
   assert.equal(airdropStatus(other.address).submission, null)
+  assert.throws(() => reviewAirdrop(result.id, { status: 'approved', amountHunch: '0' }), /positive/)
+  assert.throws(() => reviewAirdrop(result.id, { status: 'claimed', amountHunch: '1000' }), /approved or rejected/)
+  reviewAirdrop(result.id, { status: 'approved', amountHunch: '1250.5' })
+  assert.equal(airdropStatus(account.address).allocation?.amountHunch, '1250.5')
+  assert.equal(airdropStatus(account.address).allocation?.claimTx, null)
+  await assert.rejects(confirmAirdropPayout(result.id, 'invalid'), /transaction hash/)
+  reviewAirdrop(result.id, { status: 'rejected' })
+  assert.equal(airdropStatus(account.address).allocation, null)
+  await assert.rejects(confirmAirdropPayout(result.id, '0x' + '0'.repeat(64)), /Approve/)
   console.log('Airdrop checks passed: cutoff, authorship, URL validation, duplicates, wallet signature, replay prevention, private status and closed claims.')
 } finally { rmSync(directory, { recursive: true, force: true }) }

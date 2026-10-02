@@ -24,7 +24,7 @@ import { WATCH_JS, watchPage } from './web/watch.js'
 import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
-import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, createAirdropChallenge, submitAirdrop } from './core/airdrop.js'
+import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
 
 const app = new Hono()
 app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
@@ -93,6 +93,17 @@ app.get('/api/admin/airdrop/entries', (c) => {
   if (!ADMIN_TOKEN || !isAdmin(c)) return denied(c)
   c.header('cache-control', 'no-store')
   return c.json(airdropReviewEntries())
+})
+app.use('/api/admin/airdrop/*', bodyLimit({ maxSize: 2000, onError: (c) => c.json({ error: 'Request is too large.' }, 413) }))
+app.post('/api/admin/airdrop/:id/:action', async (c) => {
+  if (!ADMIN_TOKEN || !isAdmin(c)) return denied(c)
+  c.header('cache-control', 'no-store')
+  try {
+    const body = await c.req.json()
+    if (c.req.param('action') === 'review') return c.json(reviewAirdrop(c.req.param('id'), body))
+    if (c.req.param('action') === 'payout') return c.json(await confirmAirdropPayout(c.req.param('id'), body.txHash))
+    return c.notFound()
+  } catch (err) { return c.json({ error: err instanceof AirdropError ? err.message : 'Unable to verify or save this review.' }, 400) }
 })
 // The owner's own settings. No token gate: the contract checks the signature, not this server.
 app.get('/owner', (c) => c.html(withSiteNavigation(ownerPage(), '/owner')))

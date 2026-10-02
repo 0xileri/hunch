@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { isAddress, verifyMessage, type Address, type Hex } from 'viem'
+import { decodeEventLog, isAddress, parseAbi, parseUnits, verifyMessage, type Address, type Hex } from 'viem'
+import { publicClient, treasuryAccount } from '../chain/refuel.js'
 import { readJson, writeJson } from './store.js'
 import { PUBLIC_URL } from '../config.js'
 
@@ -15,7 +16,7 @@ export const AIRDROP = {
   claimsOpen: false,
 }
 type Post = { url: string; id: string; publishedAt: string; reportedViews: number | null }
-type Entry = { id: string; wallet: string; handle: string; posts: Post[]; verificationCode: string; submittedAt: string; status: 'pending' }
+type Entry = { id: string; wallet: string; handle: string; posts: Post[]; verificationCode: string; submittedAt: string; status: 'pending' | 'approved' | 'rejected' | 'claimed'; amountHunch?: string; reviewedAt?: string; claimTx?: string }
 const entries = readJson<Entry[]>('airdrop-supporters.json', [])
 const challenges = new Map<string, { wallet: string; handle: string; posts: Post[]; message: string; expiresAt: number }>()
 
@@ -93,6 +94,54 @@ export const airdropStatus = (wallet: string) => {
   if (!isAddress(wallet)) return invalid('Provide a valid wallet address.')
   const entry = entries.find(e => e.wallet === wallet.toLowerCase())
   // Do not expose X identities, links or verification codes through public wallet lookups.
-  return { campaign: AIRDROP, submission: entry ? { status: entry.status, submittedAt: entry.submittedAt } : null, allocation: null, message: 'Allocations are under review. Claims are not open.' }
+  return { campaign: AIRDROP, submission: entry ? { status: entry.status, submittedAt: entry.submittedAt } : null, allocation: entry?.amountHunch && ['approved', 'claimed'].includes(entry.status) ? { amountHunch: entry.amountHunch, status: entry.status, claimTx: entry.claimTx ?? null } : null, message: 'Allocations are under review. Claims are not open.' }
 }
 export const airdropReviewEntries = () => entries
+
+export function reviewAirdrop(id: string, body: unknown) {
+  const entry = entries.find(e => e.id === id)
+  if (!entry) return invalid('Entry not found.')
+  if (entry.status === 'claimed') return invalid('A confirmed claim cannot be edited.')
+  const input = body as { status?: unknown; amountHunch?: unknown } | null
+  if (!input || !['approved', 'rejected'].includes(String(input.status))) return invalid('Choose approved or rejected.')
+  let amount: string | undefined
+  if (input.status === 'approved') {
+    if (typeof input.amountHunch !== 'string' || !/^\d{1,15}(\.\d{1,18})?$/.test(input.amountHunch) || parseUnits(input.amountHunch, 18) <= 0n)
+      return invalid('Provide the approved HUNCH amount as a positive decimal string.')
+    amount = input.amountHunch
+  }
+  const updated: Entry = { ...entry, status: input.status as 'approved' | 'rejected', amountHunch: amount, reviewedAt: new Date().toISOString() }
+  writeJson('airdrop-supporters.json', entries.map(e => e.id === id ? updated : e))
+  Object.assign(entry, updated)
+  return { id, status: entry.status }
+}
+
+// An operator may record a completed payout, but the chain must prove the treasury transfer.
+// There is no public endpoint that can mark a wallet claimed.
+export async function confirmAirdropPayout(id: string, hash: unknown) {
+  const entry = entries.find(e => e.id === id)
+  if (!entry || entry.status !== 'approved' || !entry.amountHunch) return invalid('Approve the allocation before recording a payout.')
+  if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) return invalid('Provide a valid transaction hash.')
+  if (entries.some(e => e.claimTx?.toLowerCase() === hash.toLowerCase())) return invalid('This payout transaction is already recorded.')
+  const treasury = treasuryAccount()
+  if (!treasury) return invalid('The campaign treasury is not configured.')
+  const receipt = await publicClient.getTransactionReceipt({ hash: hash as Hex })
+  const latest = await publicClient.getBlockNumber()
+  if (receipt.status !== 'success' || latest < receipt.blockNumber + 5n) return invalid('The payout needs a successful receipt and six block confirmations.')
+  const abi = parseAbi(['event Transfer(address indexed from, address indexed to, uint256 value)'])
+  let received = 0n
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== AIRDROP.token.toLowerCase()) continue
+    try {
+      const event = decodeEventLog({ abi, data: log.data, topics: log.topics })
+      if (event.args.from.toLowerCase() === treasury.address.toLowerCase() && event.args.to.toLowerCase() === entry.wallet) received += event.args.value
+    } catch { /* Ignore unrelated events. */ }
+  }
+  if (received !== parseUnits(entry.amountHunch, 18)) return invalid('The receipt does not show the exact approved HUNCH transfer from the campaign treasury to this wallet.')
+  // Re-check after RPC waits; no concurrent approval change or duplicate confirmation may win.
+  if (entry.status !== 'approved' || entries.some(e => e.claimTx?.toLowerCase() === hash.toLowerCase())) return invalid('The entry changed during verification. Try again.')
+  const updated: Entry = { ...entry, status: 'claimed', claimTx: hash }
+  writeJson('airdrop-supporters.json', entries.map(e => e.id === id ? updated : e))
+  Object.assign(entry, updated)
+  return { id, status: entry.status, claimTx: hash }
+}
