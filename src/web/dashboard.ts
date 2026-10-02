@@ -84,7 +84,7 @@ export function dashboardPage(): string {
   <div class="nav-inner">
     <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
     <nav class="links" aria-label="Sections">
-      <a href="#signal">Signal</a><a href="#investigation">Investigation</a><a href="#watches">Watches</a><a href="#market">Market</a><a href="#wallet">Fuel</a><a href="/watch">Get watched</a>
+      <a href="#signal">Signal</a><a href="#investigation">Investigation</a><a href="#watches">Watches</a><a href="#market">Market</a><a href="#wallet">Fuel</a><a href="/watch">Get watched</a><a href="/airdrop">Airdrop</a>
     </nav>
     <div class="nav-right">
       <button class="theme-toggle" id="btn-theme" type="button" aria-label="Switch to light theme">Light mode</button>
@@ -120,6 +120,11 @@ export function dashboardPage(): string {
 </section>
 
 <div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
+
+<section class="card reveal" aria-labelledby="supporter-title" style="margin:28px 0;padding:30px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px">
+  <div style="max-width:680px"><span class="eyebrow" style="color:var(--accent)">For our early supporters</span><h2 id="supporter-title" style="margin:12px 0;font-size:28px">$500 in $HUNCH. For the people who backed us.</h2><p style="color:var(--muted);line-height:1.7">Posted about Hunch before October 2 at 11:47 am WAT? Register your existing posts for the supporter airdrop. Allocations are under review.</p></div>
+  <a href="/airdrop" style="display:inline-block;border-radius:10px;padding:14px 22px;background:var(--accent);color:var(--on-accent);font-weight:700">Supporter airdrop →</a>
+</section>
 
 <section class="kpis reveal" aria-label="Live numbers">
   ${KPIS.map((k) => `<div class="kpi"><span class="kpi-label">${k.label}</span><strong class="kpi-value" id="kpi-${k.id}">—</strong><span class="kpi-hint" id="kpi-${k.id}-hint">${k.hint}</span></div>`).join('')}
@@ -163,7 +168,7 @@ export function dashboardPage(): string {
       <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
       <p>Free hunches. Paid proof.<br>An agent on its own Orbio key that decides when information is worth paying for.</p>
     </div>
-    <div class="foot-col"><h4>Explore</h4><a href="#signal">Live console</a><a href="/changelog">What changed</a><a href="/demo">The demo fixture</a><a href="/api/status">Status API (JSON)</a></div>
+    <div class="foot-col"><h4>Explore</h4><a href="#signal">Live console</a><a href="/airdrop">Supporter airdrop</a><a href="/changelog">What changed</a><a href="/demo">The demo fixture</a><a href="/api/status">Status API (JSON)</a></div>
     <div class="foot-col"><h4>Proof</h4>${treasuryAccount() ? `<a href="${esc(addressUrl(treasuryAccount()!.address))}">Treasury on Blockscout</a>` : ''}${REPO_URL ? `<a href="${esc(REPO_URL)}">Source on GitHub</a>` : ''}<a href="https://www.orbio.so/protocol/agents">Orbio's CREDIT protocol</a></div>
     <div class="foot-col"><h4>Built with</h4><span>Orbio gateway and MCP</span><span>Robinhood Chain</span><span>all-MiniLM-L6-v2, locally</span></div>
   </div>

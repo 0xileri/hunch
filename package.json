@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "market:trial": "tsx src/scripts/market-trial.ts",
     "watch:check": "tsx src/scripts/watch-check.ts",
+    "airdrop:check": "tsx src/scripts/airdrop-check.ts",
     "pay:build": "tsx src/scripts/pay-build.ts",
     "pay:deploy": "tsx src/scripts/pay-deploy.ts",
     "rate:check": "tsx src/scripts/rate-check.ts",

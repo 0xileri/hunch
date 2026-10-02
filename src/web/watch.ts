@@ -43,7 +43,7 @@ export function watchPage(): string {
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="/" aria-label="Hunch home">${logo}</a>
-    <nav class="links" aria-label="Sections"><a href="/">Live console</a><a href="/demo">The fixture</a></nav>
+    <nav class="links" aria-label="Sections"><a href="/">Live console</a><a href="/airdrop">Supporter airdrop</a><a href="/demo">The fixture</a></nav>
   </div>
 </header>
 

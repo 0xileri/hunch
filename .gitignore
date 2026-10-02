@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.airdrop-check/
+.airdrop-preview/
 
 # Secrets: env files and the agent's saved Orbio login (OAuth client + tokens)
 .env

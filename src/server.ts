@@ -4,6 +4,7 @@ import './env.js'
 import { existsSync, readFileSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import { Hono, type Context } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import {
   claimKey, demoCooldownLeft, holdsKey, isBusy, refuel, revokeAgentKey, rotateKey, runDemo, scan, setPaused, snapshot, startAgent,
 } from './agent/coordinator.js'
@@ -20,8 +21,11 @@ import { APP_CSS, APP_JS, dashboardPage } from './web/dashboard.js'
 import { changelogPage } from './web/changelog.js'
 import { ownerPage } from './web/owner.js'
 import { WATCH_JS, watchPage } from './web/watch.js'
+import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
+import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, createAirdropChallenge, submitAirdrop } from './core/airdrop.js'
 
 const app = new Hono()
+app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
 
 const isAdmin = (c: Context) => !ADMIN_TOKEN || c.req.header('authorization') === `Bearer ${ADMIN_TOKEN}`
 const denied = (c: Context) => c.json({ error: 'This control needs the operator token.' }, 401)
@@ -46,6 +50,46 @@ const publicWatch = (w: Watch) => ({
 app.get('/', (c) => c.html(dashboardPage()))
 app.get('/watch', (c) => c.html(watchPage()))
 app.get('/changelog', (c) => c.html(changelogPage()))
+app.get('/airdrop', (c) => c.html(airdropPage()))
+app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
+app.get('/api/airdrop', (c) => c.json(AIRDROP))
+app.get('/api/airdrop/wallet/:wallet', (c) => {
+  c.header('cache-control', 'no-store')
+  try { return c.json(airdropStatus(c.req.param('wallet'))) }
+  catch (err) { return c.json({ error: failure(err) }, 400) }
+})
+const airdropRate = new Map<string, { count: number; expiresAt: number }>()
+app.post('/api/airdrop/:action', async (c) => {
+  c.header('cache-control', 'no-store')
+  const action = c.req.param('action')
+  if (!['challenge', 'submit'].includes(action)) return c.notFound()
+  const origin = c.req.header('origin')
+  if (origin && origin !== new URL(PUBLIC_URL).origin) return c.json({ error: 'Submit from Hunch’s official website.' }, 403)
+  // Railway supplies this client address; no forwarded header is trusted for authorization.
+  const ip = c.req.header('x-real-ip') ?? c.req.header('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown'
+  const now = Date.now()
+  for (const [key, value] of airdropRate) if (value.expiresAt < now) airdropRate.delete(key)
+  if (airdropRate.size > 10000) return c.json({ error: 'Busy. Try again shortly.' }, 429)
+  const rate = airdropRate.get(ip) ?? { count: 0, expiresAt: now + 60000 }
+  if (++rate.count > 20) return c.json({ error: 'Too many requests. Try again in a minute.' }, 429)
+  airdropRate.set(ip, rate)
+  try {
+    const raw = await c.req.text()
+    if (raw.length > 12000) return c.json({ error: 'Submission is too large.' }, 413)
+    const body = JSON.parse(raw)
+    return action === 'challenge' ? c.json(createAirdropChallenge(body)) : c.json(await submitAirdrop(body), 201)
+  } catch (err) {
+    if (err instanceof AirdropError || err instanceof SyntaxError) return c.json({ error: failure(err) }, 400)
+    console.error('Airdrop submission failed', err)
+    return c.json({ error: 'Unable to save your submission. Please try again.' }, 500)
+  }
+})
+app.get('/api/admin/airdrop/entries', (c) => {
+  // Unlike legacy controls, this endpoint must remain closed when ADMIN_TOKEN is missing.
+  if (!ADMIN_TOKEN || !isAdmin(c)) return denied(c)
+  c.header('cache-control', 'no-store')
+  return c.json(airdropReviewEntries())
+})
 // The owner's own settings. No token gate: the contract checks the signature, not this server.
 app.get('/owner', (c) => c.html(ownerPage()))
 app.get('/watch.js', (c) => c.body(WATCH_JS, 200, { 'content-type': 'text/javascript; charset=utf-8' }))
