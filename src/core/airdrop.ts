@@ -121,6 +121,7 @@ export function reviewAirdrop(id: string, body: unknown) {
   if (!input || !['approved', 'rejected'].includes(String(input.status))) return invalid('Choose approved or rejected.')
   let amount: string | undefined
   if (input.status === 'approved') {
+    if (!entry.posts.some(post => !post.excludedAt)) return invalid('An entry with no remaining posts cannot be approved.')
     if (typeof input.amountHunch !== 'string' || !/^\d{1,15}(\.\d{1,18})?$/.test(input.amountHunch) || parseUnits(input.amountHunch, 18) <= 0n)
       return invalid('Provide the approved HUNCH amount as a positive decimal string.')
     amount = input.amountHunch
