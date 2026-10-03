@@ -35,7 +35,7 @@ export function watchPage(): string {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>try { document.documentElement.dataset.theme = localStorage.getItem('hunch-theme') || 'dark'; } catch { document.documentElement.dataset.theme = 'dark'; }</script>
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v=watch-reports-1">
 </head>
 <body class="watch-page">
 <div class="backdrop" aria-hidden="true"><div class="gridlines"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
@@ -48,19 +48,20 @@ export function watchPage(): string {
 </header>
 
 <main class="wrap">
-  <section class="w-hero">
+  <section class="w-hero" id="watch-hero">
     <div class="eyebrow"><span class="live-dot"></span>${live ? 'Open for watches' : 'Not open yet'}</div>
     <h1>Put a watch on<br><span class="grad">your project.</span></h1>
     <p class="lede">Hunch reads public sources all day for free and scores what people are saying about you. When a claim starts spreading across independent sources, it pays for a real investigation and hands you the evidence, the confidence and the unknowns.</p>
   </section>
 
-  <section class="w-how">
+  <section class="w-how" id="watch-how">
     <div class="w-step"><span class="n">1</span><h3>Say what to watch</h3><p>Your project's name and the terms people actually use for it.</p></div>
     <div class="w-step"><span class="n">2</span><h3>Fund it in USDG</h3><p>Your payment becomes this watch's investigation budget, on chain 4663.</p></div>
-    <div class="w-step"><span class="n">3</span><h3>It spends only when it should</h3><p>${(WATCH.usdPerUsdg * 100).toFixed(0)}% of every USDG is budget. A quiet week costs you nothing.</p></div>
+    <div class="w-step"><span class="n">3</span><h3>Follow the evidence</h3><p>Public-feed checks are free. Targeted search and investigations use your prepaid budget.</p></div>
   </section>
 
-  <div class="w-grid">
+  <section class="card" id="recent-watches" hidden><h2>Recently viewed watches</h2><div id="recent-watch-list" class="report-links"></div></section>
+  <div class="w-grid" id="watch-setup">
     <section class="card" id="open">
       <h2>Open a watch</h2>
       <form id="form" novalidate>
@@ -89,22 +90,33 @@ export function watchPage(): string {
         <dt>Rate</dt><dd>1 USDG = $${WATCH.usdPerUsdg.toFixed(2)} of investigation budget</dd>
         <dt>Runs for</dt><dd>${WATCH.days} days, or until the budget is spent</dd>
         <dt>Typical investigation</dt><dd>about $0.02</dd>
-        <dt>Watching, scoring, clustering</dt><dd>free, always</dd>
+        <dt>Public feeds, scoring, clustering</dt><dd>free, always</dd>
+        <dt>Targeted web search</dt><dd>Metered against your watch's budget</dd>
       </dl>
-      ${
-        WATCH.usdPerHunch > 0 ?
-          `<p class="muted">You can also pay in <b>${esc(LAUNCHPAD.symbol)}</b>, the agent's own token, at a posted rate of $${(WATCH.usdPerHunch * WATCH.hunchBonus).toFixed(8)} of budget per token — a ${Math.round((WATCH.hunchBonus - 1) * 100)}% bonus over the rate itself. The rate is posted by hand and reviewed, not read from the market, and one payment credits at most $${WATCH.maxCreditPerPaymentUsd}.</p>`
-        : ''
-      }
+      <p class="muted">You can also pay in <b>${esc(LAUNCHPAD.symbol)}</b> when a live rate is available. The wallet selector shows the estimated budget at the current quoted rate. Final credit uses Hunch’s payment policy; one payment credits at most $${WATCH.maxCreditPerPaymentUsd}.</p>
       <p class="muted">The agent keeps a fifth of your budget in reserve and never spends more than 15% of it on one investigation. Every cent it does spend is shown on the <a href="/">live console</a> with the balance before and after.</p>
       <p class="muted">Hunch reports a status, a confidence and what it could not resolve. It does not tell you a claim is true, and it never says a rumour is settled when it is not.</p>
     </section>
   </div>
 
+  <section class="watch-workspace" id="watch-workspace" hidden><div class="watch-heading"><div><span class="eyebrow">Your project watch</span><h1 id="st-entity">Loading your watch…</h1><p id="st-terms" class="muted"></p><small id="st-id" class="mono"></small></div><div class="report-links"><button class="small" data-copy="watch-link" type="button">Copy watch link</button><a href="/watch">Open another watch →</a></div></div><ol class="watch-progress" id="watch-progress" aria-label="Watch progress"></ol><p id="watch-next" class="watch-next" role="status"></p></section>
+
   <section class="card w-pay" id="pay" hidden>
     <h2>Fund <span class="mono" id="pay-id"></span></h2>
-    <p>Send at least <b>${WATCH.minUsdg} USDG</b> on Robinhood Chain. Two calls from your wallet: approve the payment contract, then fund the watch. Your watch starts on the agent's next scan.</p>
-    <ol class="w-calls">
+    <p>Connect your wallet, choose a token and fund your watch on Robinhood Chain. Your watch begins when Hunch verifies and credits the payment.</p>
+
+    <div class="w-payform">
+      <h3>Pay from your wallet</h3>
+      <div class="w-payrow">
+        <label>Token<select id="pay-token"></select></label>
+        <label>Amount<input id="pay-amount" inputmode="decimal" placeholder="2"></label>
+        <button class="primary" id="pay-go">Connect wallet</button>
+      </div>
+      <p class="muted" id="pay-worth"></p>
+      <p class="err" id="pay-err" role="alert"></p>
+      <p class="muted" id="pay-status"></p>
+    </div>
+    <details class="watch-advanced"><summary>Manual payment details</summary><ol class="w-calls">
       <li>
         <div class="w-call-h">Approve USDG <button class="small copy" data-copy="usdg">Copy token</button></div>
         <code class="mono" id="usdg">${CONTRACTS.usdg}</code>
@@ -117,34 +129,25 @@ export function watchPage(): string {
         <div class="w-call-h" style="margin-top:10px">Calldata for the minimum <button class="small copy" data-copy="calldata">Copy calldata</button></div>
         <code class="mono wrap-any" id="calldata"></code>
       </li>
-    </ol>
-    <div class="w-payform">
-      <h3>Pay from your wallet</h3>
-      <div class="w-payrow">
-        <label>Token<select id="pay-token"></select></label>
-        <label>Amount<input id="pay-amount" inputmode="decimal" placeholder="2"></label>
-        <button class="primary" id="pay-go">Connect wallet</button>
-      </div>
-      <p class="muted" id="pay-worth"></p>
-      <p class="err" id="pay-err" role="alert"></p>
-      <p class="muted" id="pay-status"></p>
-    </div>
+    </ol></details>
     <p class="muted">Two calls: the token approves this contract, then the contract moves it. Paying from the address you gave keeps this watch tied to you. Nothing is held by the contract — it goes straight to Hunch's treasury, which buys the inference credit.</p>
     <p><a id="status-link" href="#">Follow this watch</a></p>
   </section>
 
   <section class="card w-status" id="status" hidden>
-    <h2>Watch <span class="mono" id="st-id"></span> <span class="badge" id="st-state">pending</span></h2>
+    <h2>Watch status <span class="badge" id="st-state">Loading</span><button class="small" id="watch-refresh" type="button">Refresh status</button></h2>
     <div class="stats" id="st-stats"></div>
+    <p id="watch-scan" class="muted"></p><p id="watch-cost-note" class="muted"></p>
     <div id="st-seen"></div>
     <div id="st-invs"></div>
+    <div id="watch-payments"></div><p id="watch-update" class="muted" role="status" aria-live="polite"></p>
   </section>
 </main>
 
 <footer>
   <div class="foot-base">Built for Orbio Build Week · every balance, cost and transaction shown is real</div>
 </footer>
-<script src="/watch.js"></script>
+<script src="/watch.js?v=workspace-1"></script>
 </body>
 </html>`
 }

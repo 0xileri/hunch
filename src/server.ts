@@ -24,6 +24,8 @@ import { WATCH_JS, watchPage } from './web/watch.js'
 import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
+import { investigationPage, investigationReport, reportIsRunning, REPORT_JS } from './web/investigation-page.js'
+import { investigationHistory, HISTORY_JS } from './web/investigation-history.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
 import { checkClaimPair, claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, refreshClaimSettlements, setClaimsEnabled } from './core/airdrop-claims.js'
 
@@ -54,6 +56,13 @@ app.get('/', (c) => c.html(sitePage()))
 app.get('/how-it-works', (c) => c.html(howItWorksPage()))
 for (const page of Object.keys(SECTION_PAGES) as SectionPage[]) app.get(`/${page}`, (c) => c.html(sitePage(page)))
 app.get('/watch', (c) => c.html(withSiteNavigation(watchPage(), '/watch')))
+app.get('/investigations/:id', (c) => {
+  c.header('cache-control', 'no-store')
+  const inv = state.investigations.find(i => i.id === c.req.param('id'))
+  return inv ? c.html(investigationPage(inv)) : c.html('<h1>Investigation not found</h1><a href="/investigations">Browse investigations</a>', 404)
+})
+app.get('/investigation-report.js', (c) => c.body(REPORT_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
+app.get('/investigation-list.js', (c) => c.body(HISTORY_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
 app.get('/changelog', (c) => c.html(withSiteNavigation(changelogPage(), '/changelog')))
 app.get('/airdrop', (c) => c.html(withSiteNavigation(airdropPage(), '/airdrop')))
 app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
@@ -159,6 +168,17 @@ app.get('/api/investigations/:id', (c) => {
   if (c.req.query('download')) c.header('content-disposition', `attachment; filename="hunch-${inv.id}.json"`)
   return c.json({ ...inv, spend: state.spend.filter((s) => s.investigationId === inv.id) })
 })
+app.get('/api/investigations', (c) => {
+  c.header('cache-control', 'no-store')
+  const offset = Number(c.req.query('offset') ?? '0')
+  if (!Number.isSafeInteger(offset) || offset < 0) return c.json({ error: 'Invalid history offset' }, 400)
+  return c.json(investigationHistory(state.investigations, c.req.query('watch'), offset))
+})
+app.get('/api/investigations/:id/report', (c) => {
+  c.header('cache-control', 'no-store')
+  const inv = state.investigations.find(i => i.id === c.req.param('id'))
+  return inv ? c.json({ html: investigationReport(inv), running: reportIsRunning(inv) }) : c.json({ error: 'Investigation not found' }, 404)
+})
 app.get('/api/spend', (c) => c.json(state.spend))
 
 // ── watches: what the agent sells ───────────────────────────────────────────────────────────────
@@ -178,11 +198,12 @@ app.post('/api/watch', async (c) => {
 })
 
 app.get('/api/watch/:id', async (c) => {
+  c.header('cache-control', 'no-store')
   let watch = watchById(c.req.param('id'))
   if (!watch) return c.json({ error: 'not found' }, 404)
   // Someone is waiting on this one: look for its payment now instead of at the next scan.
   if (!watch.house && watch.status === 'pending') {
-    await refreshPayments().catch((err) => log('ERROR', `payment check failed: ${failure(err)}`))
+    void refreshPayments().catch((err) => log('ERROR', `payment check failed: ${failure(err)}`))
     watch = watchById(c.req.param('id')) ?? watch
   }
   // What the agent has seen for this watch, including what it decided was not worth paying for.
@@ -213,12 +234,16 @@ app.get('/api/watch/:id', async (c) => {
     payment: paymentInstructions(watch),
     seen,
     searchedUsd: watch.searchedUsd ?? 0,
+    monitoring: { lastScanAt: state.agent.lastScanAt, paused: state.agent.paused, scheduled: SCHEDULE.enabled, scanEveryMin: SCHEDULE.scanEveryMin },
     investigations: state.investigations.filter((i) => i.watchId === watch.id).map((i) => ({
       id: i.id,
       at: i.createdAt,
       claim: i.claim,
       spentUsd: i.spentUsd,
       status: i.artifact?.status ?? i.status,
+      state: i.status,
+      accepted: i.status === 'complete' && i.acceptance?.accepted === true,
+      demo: i.demo,
       confidence: i.artifact?.confidence ?? null,
     })),
   })

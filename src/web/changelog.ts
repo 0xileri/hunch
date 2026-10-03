@@ -12,6 +12,15 @@ export interface Change {
 
 export const CHANGES: Change[] = [
   {
+    date: '2026-10-03',
+    title: 'From a watch to a readable investigation',
+    body: [
+      'Every project watch now has a workspace showing funding, monitoring, remaining budget, the latest scan and the next step. Your recently viewed watches are saved in your browser.',
+      'Investigations have their own readable report pages with findings, source links, unknowns and actual research costs. Running reports refresh as workers progress; results that fail verification are clearly marked as drafts. Paginated history includes older reports beyond the console’s latest ten.',
+      'Wallet funding stops when a chain switch is rejected or an approval fails. Pending transactions can be checked again without sending another payment, and entering an amount is no longer interrupted by status refreshes.',
+    ],
+  },
+  {
     date: '2026-09-30',
     title: 'It goes looking, and it shows you what it saw',
     body: [

@@ -313,6 +313,7 @@
         <div class="sub">${d.action === 'INVESTIGATE' ? `max budget ${usd(d.budgetUsd, 4)} · planned worst case ${usd(d.estimateUsd, 4)}` : d.action === 'WATCH' ? 'spend: $0 · re-checked on every scan' : 'spend: $0'} · decided ${time(d.at)}</div>
       </div>
       <div class="history">${history}</div>
+      ${sig.investigationId ? `<p><a href="/investigations/${encodeURIComponent(sig.investigationId)}">Read this investigation →</a></p>` : ''}
       <div class="two">
         <div>
           <h3>Why this score (local, $0)</h3>
@@ -390,6 +391,7 @@
         : `<p class="empty">Working… the artifact appears when the verifier finishes.</p>`
     set('investigation', `
       <h2>Investigation <span class="badge ${inv.status}">${esc(inv.status)}</span>${inv.demo ? '<span class="badge warn">demo fixture</span>' : ''}<span class="right mono" style="font-size:.75rem">${esc(inv.id)} · ${time(inv.createdAt)}</span></h2>
+      <p><a href="/investigations/${encodeURIComponent(inv.id)}">Open readable report →</a></p>
       <div class="budgetline">
         <span>allocated <b>${usd(inv.maxBudgetUsd, 4)}</b></span>
         <span>planned worst case <b>${usd(inv.estimateUsd, 4)}</b></span>
@@ -447,7 +449,7 @@
       const b = w.budget
       const pct = b.budgetUsd ? Math.min(100, (b.spentUsd / b.budgetUsd) * 100) : 0
       return `<li>
-        <div class="who">${esc(w.entity)} <span class="badge ${w.status === 'active' ? 'ok' : w.status === 'pending' ? 'busy' : ''}">${esc(w.house ? 'house' : w.status)}</span></div>
+        <div class="who"><a href="/watch?id=${encodeURIComponent(w.id)}">${esc(w.entity)} →</a> <span class="badge ${w.status === 'active' ? 'ok' : w.status === 'pending' ? 'busy' : ''}">${esc(w.house ? 'house' : w.status)}</span></div>
         <div class="role">${w.terms.map((t) => `"${esc(t)}"`).join(', ')}</div>
         <div class="bar" style="height:6px;margin:6px 0"><i style="width:${pct}%"></i></div>
         <div class="role">${usd(b.spentUsd, 4)} spent of ${usd(b.budgetUsd, 2)}${w.investigations ? ` · ${w.investigations} investigation${w.investigations > 1 ? 's' : ''}` : ''}${w.expiresAt ? ` · until ${w.expiresAt.slice(0, 10)}` : ''}</div>

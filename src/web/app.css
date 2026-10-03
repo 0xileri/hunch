@@ -529,6 +529,68 @@ footer { margin-top: 64px; border-top: 1px solid var(--line); background: color-
 .w-seen .m { color: var(--faint); font-size: .78rem; line-height: 1.5; }
 .w-status h3 { margin: 18px 0 0; font-size: .95rem; }
 
+/* Project workspaces and readable investigation reports. */
+.watch-page [hidden] { display: none !important; }
+.watch-page .wrap { padding-top: 36px; }
+.watch-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; }
+.watch-heading h1, .report-head h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.15; letter-spacing: -.04em; margin: 18px 0 12px; overflow-wrap: anywhere; }
+.watch-heading p { margin: 0 0 8px; }
+.report-links { display: flex; gap: 12px 18px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.watch-heading > .report-links { padding-top: 12px; flex-shrink: 0; }
+.watch-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 28px 0 20px; }
+.watch-progress li { display: flex; align-items: center; gap: 9px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 13px; }
+.watch-progress li > span { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border-radius: 50%; background: var(--panel-2); font: 600 11px/1 var(--mono); }
+.watch-progress .done { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 22%, var(--line)); }
+.watch-progress .current { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); }
+.watch-progress .current > span { background: var(--accent-fill); color: var(--on-accent); }
+.watch-next { padding: 16px 20px; border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; margin: 0 0 24px; }
+.watch-advanced { margin-top: 24px; }
+.watch-advanced summary { font-size: 13px; }
+.watch-page .w-payform { border-top: 0; padding-top: 0; }
+.watch-page .w-payrow label { flex: 1; min-width: 0; }
+.watch-page .w-payrow select { width: 100%; }
+.watch-page .w-payrow button { min-height: 44px; }
+.w-status #watch-refresh { margin-left: auto; }
+.w-status .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.watch-report-link { color: var(--text); text-decoration: none; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.watch-report-link:hover { color: var(--accent); }
+.w-invs .m { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.watch-page #recent-watches { margin-bottom: 24px; }
+.watch-page .w-calls code, .watch-page .w-calls small { overflow-wrap: anywhere; }
+.report-page { max-width: 1060px; padding-top: 30px; }
+.report-back { display: inline-block; font-size: 13px; margin-bottom: 26px; }
+.report-head { max-width: 880px; }
+.report-head .eyebrow { font-size: 11px; line-height: 1.5; }
+.report-page .card { margin: 20px 0; }
+.report-summary { border-color: var(--accent-line); }
+.report-verdict { display: block; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.03em; }
+.report-stats { margin: 22px 0 0; }
+.report-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.report-grid .card { margin: 0; }
+.report-evidence { list-style: none; margin: 0; padding: 0; }
+.report-evidence li { padding: 14px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.report-evidence li:first-child { border-top: 0; padding-top: 0; }
+.report-evidence p { color: var(--text); font-size: 15px; line-height: 1.6; margin: 0 0 8px; }
+.report-findings { margin: 0; padding-left: 20px; line-height: 1.7; }
+.report-findings li + li { margin-top: 10px; }
+.report-directory { list-style: none; margin: 0; padding: 0; }
+.report-directory li { padding: 22px 0; border-top: 1px solid var(--line); }
+.report-directory li:first-child { padding-top: 8px; border-top: 0; }
+.report-directory p { font-size: 13px; margin: 8px 0 12px; }
+.report-directory .mono { font-size: 11px; }
+@media (max-width: 700px) {
+  .watch-page .wrap { padding: 24px 16px 36px; }
+  .watch-heading { flex-direction: column; gap: 14px; }
+  .watch-heading > .report-links { padding: 0; }
+  .watch-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 22px; }
+  .watch-progress li { padding: 10px; font-size: 12px; }
+  .w-status .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .report-grid { grid-template-columns: 1fr; gap: 0; }
+  .report-grid .card { margin: 10px 0; }
+  .report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .w-payrow input, .w-payrow select, .watch-page input { font-size: 16px; }
+}
+
 /* ── the changelog ──────────────────────────────────────────────────────────────────────────── */
 .cl { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
 .cl-item { display: grid; grid-template-columns: 190px 1fr; gap: 24px; padding: 22px 0; border-top: 1px solid var(--line); }
