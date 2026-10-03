@@ -25,6 +25,7 @@ import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
+import { claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, setClaimsEnabled } from './core/airdrop-claims.js'
 
 const app = new Hono()
 app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
@@ -56,17 +57,17 @@ app.get('/watch', (c) => c.html(withSiteNavigation(watchPage(), '/watch')))
 app.get('/changelog', (c) => c.html(withSiteNavigation(changelogPage(), '/changelog')))
 app.get('/airdrop', (c) => c.html(withSiteNavigation(airdropPage(), '/airdrop')))
 app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
-app.get('/api/airdrop', (c) => c.json(AIRDROP))
+app.get('/api/airdrop', (c) => { c.header('cache-control', 'no-store'); return c.json({ ...AIRDROP, ...claimCampaignStatus() }) })
 app.get('/api/airdrop/wallet/:wallet', (c) => {
   c.header('cache-control', 'no-store')
-  try { return c.json(airdropStatus(c.req.param('wallet'))) }
+  try { const result = airdropStatus(c.req.param('wallet')); return c.json({ ...result, campaign: { ...AIRDROP, ...claimCampaignStatus() }, allocation: claimAllocation(c.req.param('wallet')) ?? result.allocation }) }
   catch (err) { return c.json({ error: failure(err) }, 400) }
 })
 const airdropRate = new Map<string, { count: number; expiresAt: number }>()
 app.post('/api/airdrop/:action', async (c) => {
   c.header('cache-control', 'no-store')
   const action = c.req.param('action')
-  if (!['challenge', 'submit'].includes(action)) return c.notFound()
+  if (!['challenge', 'submit', 'claim-challenge', 'claim'].includes(action)) return c.notFound()
   const origin = c.req.header('origin')
   if (origin && origin !== new URL(PUBLIC_URL).origin) return c.json({ error: 'Submit from Hunch’s official website.' }, 403)
   // Railway supplies this client address; no forwarded header is trusted for authorization.
@@ -81,6 +82,8 @@ app.post('/api/airdrop/:action', async (c) => {
     const raw = await c.req.text()
     if (raw.length > 12000) return c.json({ error: 'Submission is too large.' }, 413)
     const body = JSON.parse(raw)
+    if (action === 'claim-challenge') return c.json(claimChallenge(body))
+    if (action === 'claim') return c.json(await executeClaim(body))
     return action === 'challenge' ? c.json(createAirdropChallenge(body)) : c.json(await submitAirdrop(body), 201)
   } catch (err) {
     if (err instanceof AirdropError || err instanceof SyntaxError) return c.json({ error: failure(err) }, 400)
@@ -94,12 +97,20 @@ app.get('/api/admin/airdrop/entries', (c) => {
   c.header('cache-control', 'no-store')
   return c.json(airdropReviewEntries())
 })
-app.use('/api/admin/airdrop/*', bodyLimit({ maxSize: 2000, onError: (c) => c.json({ error: 'Request is too large.' }, 413) }))
+app.get('/api/admin/airdrop/treasury', async (c) => {
+  if (!ADMIN_TOKEN || !isAdmin(c)) return denied(c)
+  c.header('cache-control', 'no-store')
+  try { return c.json(await claimTreasuryStatus()) } catch { return c.json({ error: 'Unable to read treasury balances.' }, 503) }
+})
+app.use('/api/admin/airdrop/*', bodyLimit({ maxSize: 6000, onError: (c) => c.json({ error: 'Request is too large.' }, 413) }))
 app.post('/api/admin/airdrop/:id/:action', async (c) => {
   if (!ADMIN_TOKEN || !isAdmin(c)) return denied(c)
   c.header('cache-control', 'no-store')
   try {
     const body = await c.req.json()
+    if (c.req.param('id') === 'treasury' && c.req.param('action') === 'initialize') return c.json(initializeClaimTreasury())
+    if (c.req.param('id') === 'claims' && c.req.param('action') === 'configure') return c.json(configureClaims(body))
+    if (c.req.param('id') === 'claims' && c.req.param('action') === 'enabled') return c.json(await setClaimsEnabled(body.enabled))
     if (c.req.param('action') === 'exclude-posts') return c.json(excludeAirdropPosts(c.req.param('id'), body))
     if (c.req.param('action') === 'review') return c.json(reviewAirdrop(c.req.param('id'), body))
     if (c.req.param('action') === 'payout') return c.json(await confirmAirdropPayout(c.req.param('id'), body.txHash))

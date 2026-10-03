@@ -11,10 +11,22 @@ Entries persist atomically in `DATA_DIR/airdrop-supporters.json`, using the same
 Before opening claims:
 
 1. Verify authorship, confirmation replies, original content and engagement; collect defensible view evidence. Historical views cannot be recovered just by freezing publication dates. Agree a measurement method and publish it before assigning rewards.
-2. Finalize the distribution formula (the proposed 30% equal / 70% view-weighted formula was not approved), appeal window and excluded engagement rules.
-3. Fix the USD-to-HUNCH conversion rate, approve allocations, deploy and fund a separately reviewed claim distributor, and integrate its transaction flow. Validate that total allocations cannot exceed the funded pool and each allocation can be claimed once.
+2. Approved distribution: 24 qualifying accounts receive $10 each, plus a proportional share of $250 by current qualifying post views. Two reply exceptions (@bywrny and @7teen_wtf) receive $5 each. Total: $500. @mrlarry100x is rejected; @mrbankalart is not included. The creator @0xileri is included as instructed. Per-post views and the USD ledger are private operator records.
+3. Fix the USD-to-HUNCH conversion rate and fund the dedicated airdrop treasury with all HUNCH allocations plus ETH for gas. Claims remain closed until explicitly enabled after funding checks.
 
-The deployed registration page intentionally reports review status, null allocations and closed claims. No contract is deployed, treasury funds moved or tokens distributed by this change.
+No new contract is deployed. Claims use server-sponsored ERC20 transfers from a separate persistent treasury, independent of the agent operating wallet. An authenticated claim signs a campaign/domain/chain/token/wallet/handle/amount-bound nonce, and receives its fixed allocation at its originally registered wallet. Claim cards are displayed only after six confirmations and an exact matching Transfer event.
+
+## Dedicated claim treasury
+
+`POST /api/admin/airdrop/treasury/initialize` with `{}` creates a random treasury once and returns only its public address, chain, and token. The private key is stored at `DATA_DIR/airdrop-treasury-secret.json`, created exclusively with restrictive permissions on Railway's persistent volume. Back up that file securely through the host before funding; never put it in Git or share it. Volume loss without a backup means loss of access to this treasury.
+
+`GET /api/admin/airdrop/treasury` returns balances and required token funding. Fund it on Robinhood Chain (4663) with HUNCH and ETH for gas. No token approval by claimants is required.
+
+`POST /api/admin/airdrop/claims/configure`: `{ "priceUsd": "0.001", "rewards": [{ "handle": "username", "usdCents": 1000 }, ...] }` installs all 26 unique allocations at once, requires exactly 50000 cents, validates reviewed accounts and the two 500-cent exceptions, and leaves claims closed. USD/token conversions round down at 18 token decimals. Once any payout is prepared, allocations cannot change. Do not use the example price without operator direction.
+
+`POST /api/admin/airdrop/claims/enabled`: `{ "enabled": true }` opens claims only if the entire unpaid pool and positive ETH balance are present. The public challenge checks the original wallet and matching handle; the signed request confirms wallet ownership. Following @hunchmode and @_ValeriusX is a declaration with explicit follow links, not an X API verification.
+
+The full signed transfer and its hash are persisted before broadcasting. Only one unresolved treasury transaction is allowed; retries rebroadcast that exact transfer so a response timeout or restart cannot issue a second payout. Failed receipts remain blocked for operator investigation rather than automatically issuing another transfer. Deploy exactly one app replica with the persistent volume; this JSON-backed implementation does not support multiple concurrent server replicas. A crashed request resumes when the same claimant signs a fresh request. Claimed cards reflect transferred HUNCH, not investment profit or loss.
 
 ## Reviewed supporter cards
 

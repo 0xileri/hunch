@@ -5,9 +5,10 @@
   let accountVersion = 0
   let provider = null
   let connecting = false
+  let claimsOpen = false
   const discovered = new Map()
   const status = text => { $('airdrop-status').textContent = text }
-  const reset = () => { wallet = null; accountVersion++; $('submit-entry').disabled = true; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
+  const reset = () => { wallet = null; accountVersion++; $('submit-entry').disabled = true; $('claim-panel').hidden = true; $('claim-reward').disabled = true; $('claim-follows').checked = false; $('claim-handle').value = ''; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
   // Mobile wallets can re-announce the same account on returning from a signature prompt.
   // Only invalidate a submission when the actual selected account changed or disappeared.
   const accountsChanged = accounts => {
@@ -17,7 +18,7 @@
   function renderReward(result, address) {
     const allocation = result.allocation
     $('share-reward').hidden = true
-    if (!allocation || !['approved', 'claimed'].includes(allocation.status)) return
+    if (!allocation || allocation.status !== 'claimed') return
     const claimed = allocation.status === 'claimed' && /^0x[0-9a-fA-F]{64}$/.test(allocation.claimTx || '')
     const headline = claimed ? 'I claimed $HUNCH.' : 'Approved for $HUNCH.'
     const amount = allocation.amountHunch
@@ -90,6 +91,7 @@
       const messages = { pending: 'Your submission is pending review. Claims are not open yet.', approved: 'Your allocation is approved. Claims are not open yet.', rejected: 'Your submission was not approved. Contact @hunchmode if you need a review.', claimed: 'Your HUNCH payout is confirmed.' }
       status(result.submission ? messages[result.submission.status] || 'Your submission is under review.' : 'Wallet connected. Add your existing posts below.')
       renderReward(result, expected)
+      renderClaim(result)
       $('connect-wallet').textContent = `Connected · ${wallet.slice(0, 6)}…${wallet.slice(-4)}`
       $('wallet-picker').close()
     } catch (e) { wallet = null; accountVersion++; $('submit-entry').disabled = true; walletMessage(walletError(e)) }
@@ -129,6 +131,45 @@
   $('wallet-close').addEventListener('click', () => $('wallet-picker').close())
   $('wallet-picker').addEventListener('click', e => { if (e.target === $('wallet-picker')) { const r=e.target.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close() } })
   const pageUrl = location.origin + '/airdrop'
+  function renderClaim(result) {
+    claimsOpen = result.campaign.claimsOpen
+    $('claim-state').textContent = claimsOpen ? 'Claims open' : 'Preparing'
+    $('claim-state-detail').textContent = claimsOpen ? 'Connect your registered wallet' : 'Claims open after funding'
+    const allocation = result.allocation
+    $('claim-panel').hidden = !allocation || allocation.status === 'claimed'
+    $('claim-reward').disabled = !claimsOpen || !allocation || busy
+    if (allocation) {
+      $('claim-amount').textContent = `${allocation.amountHunch} $HUNCH${allocation.amountUsd ? ' · $' + allocation.amountUsd + ' allocation at the fixed campaign rate' : ''}`
+      $('claim-reward').textContent = allocation.status === 'processing' ? 'Check claim' : 'Claim $HUNCH'
+      if (allocation.status === 'processing') status('Your payout is awaiting confirmation. Enter your registered X handle and use Check claim to resume safely.')
+      else if (allocation.status === 'approved') status(claimsOpen ? 'Your reward is ready. Enter your registered X handle and confirm you follow both accounts.' : 'Your reward is allocated. Claims open after the treasury is funded.')
+    }
+  }
+  api('/api/airdrop').then(campaign => renderClaim({ campaign, allocation: null })).catch(() => {})
+  $('claim-reward').addEventListener('click', async () => {
+    if (busy || !wallet || !provider || !claimsOpen) return
+    if (!$('claim-follows').checked) { status('Follow @hunchmode and @_ValeriusX, then tick the declaration.'); return }
+    const handle = $('claim-handle').value.trim()
+    if (!/^@?[A-Za-z0-9_]{1,15}$/.test(handle)) { status('Enter your registered X handle.'); return }
+    const expected = wallet, version = accountVersion
+    busy = true; $('claim-reward').disabled = true
+    try {
+      status('Preparing your fixed reward claim…')
+      const challenge = await api('/api/airdrop/claim-challenge', { wallet: expected, handle, follows: true })
+      if (version !== accountVersion) throw new Error('Wallet changed. Reconnect your original wallet.')
+      const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message)).map(byte => byte.toString(16).padStart(2, '0')).join('')
+      status('Sign the claim request in your wallet. No payment or token approval is required.')
+      const signature = await provider.request({ method: 'personal_sign', params: [messageHex, expected] })
+      if (version !== accountVersion) throw new Error('Wallet changed. Please reconnect.')
+      status('Sending your reward. Waiting for chain confirmation…')
+      const payout = await api('/api/airdrop/claim', { id: challenge.id, signature })
+      if (version !== accountVersion) return
+      const result = await api(`/api/airdrop/wallet/${encodeURIComponent(expected)}`)
+      renderReward(result, expected); renderClaim(result)
+      status(payout.status === 'claimed' ? 'Your $HUNCH is claimed and confirmed. Download your claim card below.' : payout.message)
+    } catch (error) { if (version === accountVersion) status(error.code === 4001 ? 'Claim signature cancelled. No new payout requested.' : error.message || 'Unable to claim. Try again.') }
+    finally { busy = false; $('claim-reward').disabled = !wallet || !claimsOpen }
+  })
   $('open-metamask').href = `https://metamask.app.link/dapp/${location.host}/airdrop`
   $('open-trust').href = `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(pageUrl)}`
   $('copy-wallet-link').addEventListener('click', async () => {

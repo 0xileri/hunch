@@ -35,7 +35,8 @@ async function scenario(mode) {
   const document = { getElementById: get, createElement: () => new Element() }
   const window = { ethereum, addEventListener() {}, dispatchEvent() {} }
   const fetch = async path => ({ ok: true, json: async () => {
-    if (path.includes('/wallet/')) return { submission: null, allocation: null }
+    if (path === '/api/airdrop') return { claimsOpen: false }
+    if (path.includes('/wallet/')) return { campaign: { claimsOpen: false }, submission: null, allocation: null }
     if (path.endsWith('/challenge')) return { id: 'test', message: 'Test ownership' }
     if (path.endsWith('/submit')) { submissions++; return { verificationCode: 'HUNCH-TEST' } }
     throw Error('Unexpected endpoint')
