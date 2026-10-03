@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 const source = readFileSync(new URL('../web/airdrop.js', import.meta.url), 'utf8')
 const wallet = '0x1234567890123456789012345678901234567890'
 
-async function scenario(mode) {
+async function scenario(mode, eligible = false) {
   class Element {
     handlers = {}; children = []; value = ''; hidden = false; disabled = false; textContent = ''; open = false
     addEventListener(name, fn) { this.handlers[name] = fn }
@@ -36,7 +36,7 @@ async function scenario(mode) {
   const window = { ethereum, addEventListener() {}, dispatchEvent() {} }
   const fetch = async path => ({ ok: true, json: async () => {
     if (path === '/api/airdrop') return { claimsOpen: false }
-    if (path.includes('/wallet/')) return { campaign: { claimsOpen: false }, submission: null, allocation: null }
+    if (path.includes('/wallet/')) return { eligible, campaign: { claimsOpen: false }, submission: null, allocation: eligible ? { status: 'approved', amountHunch: '2360000' } : null }
     if (path.endsWith('/challenge')) return { id: 'test', message: 'Test ownership' }
     if (path.endsWith('/submit')) { submissions++; return { verificationCode: 'HUNCH-TEST' } }
     throw Error('Unexpected endpoint')
@@ -44,6 +44,9 @@ async function scenario(mode) {
   runInNewContext(source, { window, document, fetch, Event, TextEncoder, URL, navigator: {}, location: { origin: 'https://hunch.example', host: 'hunch.example' }, setTimeout, clearTimeout })
   get('connect-wallet').handlers.click()
   await get('wallet-options').children[0].handlers.click()
+  assert.equal(get('not-eligible').open, !eligible)
+  assert.equal(get('claim-reward').disabled, !eligible)
+  if (!eligible) assert.match(get('airdrop-status').textContent, /Not eligible/)
   get('handle').value = ' earlybacker '
   get('posts').value = 'https://x.com/earlybacker/status/123'
   await get('airdrop-form').handlers.submit({ preventDefault() {} })
@@ -59,4 +62,5 @@ async function scenario(mode) {
   }
 }
 for (const mode of ['same', 'changed', 'cancelled', 'pending']) await scenario(mode)
-console.log('Wallet submission regression checks passed: same-account resume, real account change, cancellation and pending signature.')
+await scenario('same', true)
+console.log('Wallet checks passed: eligibility popup/claim control, eligible wallet without popup, same-account resume, account change and signature errors.')

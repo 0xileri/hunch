@@ -60,7 +60,7 @@ app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/ja
 app.get('/api/airdrop', (c) => { c.header('cache-control', 'no-store'); return c.json({ ...AIRDROP, ...claimCampaignStatus() }) })
 app.get('/api/airdrop/wallet/:wallet', (c) => {
   c.header('cache-control', 'no-store')
-  try { const result = airdropStatus(c.req.param('wallet')); return c.json({ ...result, campaign: { ...AIRDROP, ...claimCampaignStatus() }, allocation: claimAllocation(c.req.param('wallet')) ?? result.allocation }) }
+  try { const result = airdropStatus(c.req.param('wallet')); const reward = claimAllocation(c.req.param('wallet')); return c.json({ ...result, eligible: !!reward, campaign: { ...AIRDROP, ...claimCampaignStatus() }, allocation: reward ?? result.allocation }) }
   catch (err) { return c.json({ error: failure(err) }, 400) }
 })
 const airdropRate = new Map<string, { count: number; expiresAt: number }>()

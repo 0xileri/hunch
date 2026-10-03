@@ -5,10 +5,11 @@
   let accountVersion = 0
   let provider = null
   let connecting = false
+  let eligible = null
   const claimsOpen = false // Treasury payouts deliberately disconnected.
   const discovered = new Map()
   const status = text => { $('airdrop-status').textContent = text }
-  const reset = () => { wallet = null; accountVersion++; $('submit-entry').disabled = true; $('claim-panel').hidden = false; $('claim-reward').disabled = false; $('claim-follows').checked = false; $('claim-handle').value = ''; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
+  const reset = () => { wallet = null; eligible = null; $('not-eligible').close(); $('claim-amount').textContent = ''; accountVersion++; $('submit-entry').disabled = true; $('claim-panel').hidden = false; $('claim-reward').disabled = false; $('claim-follows').checked = false; $('claim-handle').value = ''; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
   // Mobile wallets can re-announce the same account on returning from a signature prompt.
   // Only invalidate a submission when the actual selected account changed or disappeared.
   const accountsChanged = accounts => {
@@ -86,6 +87,7 @@
       $('wallet-state').textContent = `Connected: ${wallet}`
       const result = await api(`/api/airdrop/wallet/${encodeURIComponent(wallet)}`)
       if (version !== accountVersion) return
+      eligible = result.eligible === true
       $('submit-entry').disabled = !!result.submission
       $('airdrop-form').hidden = !!result.submission
       const messages = { pending: 'Your submission is pending review. Claims are coming soon.', approved: 'Your allocation is approved. Claims are coming soon.', rejected: 'Your submission was not approved. Contact @hunchmode if you need a review.', claimed: 'Your HUNCH payout is confirmed.' }
@@ -94,6 +96,13 @@
       renderClaim(result)
       $('connect-wallet').textContent = `Connected · ${wallet.slice(0, 6)}…${wallet.slice(-4)}`
       $('wallet-picker').close()
+      if (!eligible) {
+        $('claim-reward').disabled = true
+        $('claim-amount').textContent = 'This wallet is not eligible for this airdrop.'
+        status('Not eligible. Connect the same wallet you registered for an approved reward.')
+        $('not-eligible-wallet').textContent = `${expected.slice(0, 6)}…${expected.slice(-4)}`
+        $('not-eligible').showModal()
+      }
     } catch (e) { wallet = null; accountVersion++; $('submit-entry').disabled = true; walletMessage(walletError(e)) }
     finally { connecting = false; $('connect-wallet').disabled = false }
   }
@@ -129,6 +138,8 @@
     choices()
   })
   $('wallet-close').addEventListener('click', () => $('wallet-picker').close())
+  $('not-eligible-close').addEventListener('click', () => $('not-eligible').close())
+  $('not-eligible-change').addEventListener('click', () => { $('not-eligible').close(); $('connect-wallet').click() })
   $('wallet-picker').addEventListener('click', e => { if (e.target === $('wallet-picker')) { const r=e.target.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close() } })
   const pageUrl = location.origin + '/airdrop'
   function renderClaim(result) {
@@ -137,7 +148,7 @@
     $('claim-state-detail').textContent = 'Claim your supporter reward'
     const allocation = result.allocation
     $('claim-panel').hidden = false
-    $('claim-reward').disabled = false
+    $('claim-reward').disabled = !!wallet && eligible === false
     if (allocation) {
       $('claim-amount').textContent = `${allocation.amountHunch} $HUNCH${allocation.amountUsd ? ' · $' + allocation.amountUsd + ' allocation weight' : ''}`
       $('claim-reward').textContent = 'Claim $HUNCH'
@@ -147,6 +158,7 @@
   }
   api('/api/airdrop').then(campaign => renderClaim({ campaign, allocation: null })).catch(() => {})
   $('claim-reward').addEventListener('click', () => {
+    if (wallet && eligible === false) { $('not-eligible').showModal(); return }
     status('Claims are coming soon. Payouts are not connected yet.')
     $('airdrop-status').scrollIntoView({ block: 'center', behavior: 'smooth' })
   })
