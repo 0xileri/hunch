@@ -15,7 +15,7 @@ export const AIRDROP = {
   status: 'review' as const,
   claimsOpen: false,
 }
-type Post = { url: string; id: string; publishedAt: string; reportedViews: number | null }
+type Post = { url: string; id: string; publishedAt: string; reportedViews: number | null; excludedAt?: string; exclusionReason?: string }
 type Entry = { id: string; wallet: string; handle: string; posts: Post[]; verificationCode: string; submittedAt: string; status: 'pending' | 'approved' | 'rejected' | 'claimed'; amountHunch?: string; reviewedAt?: string; claimTx?: string }
 const entries = readJson<Entry[]>('airdrop-supporters.json', [])
 const challenges = new Map<string, { wallet: string; handle: string; posts: Post[]; message: string; expiresAt: number }>()
@@ -96,7 +96,22 @@ export const airdropStatus = (wallet: string) => {
   // Do not expose X identities, links or verification codes through public wallet lookups.
   return { campaign: AIRDROP, submission: entry ? { status: entry.status, submittedAt: entry.submittedAt } : null, allocation: entry?.amountHunch && ['approved', 'claimed'].includes(entry.status) ? { amountHunch: entry.amountHunch, status: entry.status, claimTx: entry.claimTx ?? null } : null, message: 'Allocations are under review. Claims are not open.' }
 }
-export const airdropReviewEntries = () => entries
+export const airdropReviewEntries = () => entries.map(entry => ({ ...entry, posts: entry.posts.filter(post => !post.excludedAt), excludedPosts: entry.posts.filter(post => post.excludedAt) }))
+
+export function excludeAirdropPosts(id: string, body: unknown) {
+  const entry = entries.find(e => e.id === id)
+  if (!entry || !['pending', 'rejected'].includes(entry.status)) return invalid('Only unapproved entries may have posts excluded.')
+  const input = body as { postIds?: unknown; reason?: unknown } | null
+  if (!input || !Array.isArray(input.postIds) || input.postIds.length < 1 || input.postIds.length > 20 || input.postIds.some(id => typeof id !== 'string' || !entry.posts.some(p => p.id === id))) return invalid('Provide existing post IDs from this entry.')
+  if (typeof input.reason !== 'string' || input.reason.trim().length < 3 || input.reason.length > 300) return invalid('Provide a concise exclusion reason.')
+  const ids = new Set(input.postIds)
+  const posts = entry.posts.map(post => ids.has(post.id) && !post.excludedAt ? { ...post, excludedAt: new Date().toISOString(), exclusionReason: input.reason as string } : post)
+  const remaining = posts.filter(post => !post.excludedAt).length
+  const updated: Entry = { ...entry, posts, status: remaining === 0 ? 'rejected' : entry.status }
+  writeJson('airdrop-supporters.json', entries.map(e => e.id === id ? updated : e))
+  Object.assign(entry, updated)
+  return { id, status: entry.status, remainingPosts: remaining, excludedPosts: posts.length - remaining }
+}
 
 export function reviewAirdrop(id: string, body: unknown) {
   const entry = entries.find(e => e.id === id)

@@ -24,7 +24,7 @@ import { WATCH_JS, watchPage } from './web/watch.js'
 import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
-import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
+import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
 
 const app = new Hono()
 app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
@@ -100,6 +100,7 @@ app.post('/api/admin/airdrop/:id/:action', async (c) => {
   c.header('cache-control', 'no-store')
   try {
     const body = await c.req.json()
+    if (c.req.param('action') === 'exclude-posts') return c.json(excludeAirdropPosts(c.req.param('id'), body))
     if (c.req.param('action') === 'review') return c.json(reviewAirdrop(c.req.param('id'), body))
     if (c.req.param('action') === 'payout') return c.json(await confirmAirdropPayout(c.req.param('id'), body.txHash))
     return c.notFound()
