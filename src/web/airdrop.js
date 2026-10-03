@@ -8,6 +8,12 @@
   const discovered = new Map()
   const status = text => { $('airdrop-status').textContent = text }
   const reset = () => { wallet = null; accountVersion++; $('submit-entry').disabled = true; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
+  // Mobile wallets can re-announce the same account on returning from a signature prompt.
+  // Only invalidate a submission when the actual selected account changed or disappeared.
+  const accountsChanged = accounts => {
+    if (wallet && Array.isArray(accounts) && typeof accounts[0] === 'string' && accounts[0].toLowerCase() === wallet.toLowerCase()) return
+    reset()
+  }
   function renderReward(result, address) {
     const allocation = result.allocation
     $('share-reward').hidden = true
@@ -70,9 +76,9 @@
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Still waiting for your wallet. Open the extension or wallet app to approve the request, then try again.')), 45000) }),
       ]).finally(() => clearTimeout(timer))
       if (!Array.isArray(accounts) || !/^0x[0-9a-fA-F]{40}$/.test(accounts[0] || '')) throw new Error('Select an Ethereum-compatible wallet account to continue.')
-      if (provider?.removeListener) { provider.removeListener('accountsChanged', reset); provider.removeListener('disconnect', reset) }
+      if (provider?.removeListener) { provider.removeListener('accountsChanged', accountsChanged); provider.removeListener('disconnect', reset) }
       provider = selected
-      if (provider.on) { provider.on('accountsChanged', reset); provider.on('disconnect', reset) }
+      if (provider.on) { provider.on('accountsChanged', accountsChanged); provider.on('disconnect', reset) }
       wallet = accounts[0]; accountVersion++
       const expected = wallet, version = accountVersion
       $('share-reward').hidden = true
@@ -131,8 +137,13 @@
   })
   $('airdrop-form').addEventListener('submit', async e => {
     e.preventDefault()
-    if (!wallet || busy || !$('airdrop-form').reportValidity()) return
+    if (busy) return
+    if (!wallet || !provider) { walletMessage('Connect your wallet before submitting.'); $('connect-wallet').scrollIntoView({ block: 'center', behavior: 'smooth' }); return }
+    $('handle').value = $('handle').value.trim()
+    if (!$('airdrop-form').reportValidity()) return
     busy = true; $('submit-entry').disabled = true
+    $('submit-entry').textContent = 'Preparing signature…'
+    $('airdrop-status').scrollIntoView({ block: 'center', behavior: 'smooth' })
     const expected = wallet; const version = accountVersion
     try {
       const handle = $('handle').value.trim()
@@ -141,12 +152,16 @@
       const challenge = await api('/api/airdrop/challenge', { wallet: expected, handle, posts })
       if (version !== accountVersion) throw new Error('Wallet changed. Please reconnect.')
       const messageHex = '0x' + Array.from(new TextEncoder().encode(challenge.message)).map(byte => byte.toString(16).padStart(2, '0')).join('')
+      $('submit-entry').textContent = 'Approve in your wallet…'
+      status('Your wallet signature is ready. Open your wallet prompt and approve it. No payment or token approval is requested.')
       const signature = await provider.request({ method: 'personal_sign', params: [messageHex, expected] })
       if (version !== accountVersion) throw new Error('Wallet changed. Please reconnect.')
+      $('submit-entry').textContent = 'Saving submission…'
+      status('Signature received. Saving your submission…')
       const result = await api('/api/airdrop/submit', { id: challenge.id, signature })
       $('airdrop-form').hidden = true
       status(`Submission received — pending review.\n\nYour confirmation code: ${result.verificationCode}\n\nSave this code. Reply to one of your submitted X posts with this code to prove you control the account. This verification reply does not count toward rewards.\n\nYour allocation will appear after review. Claims are not open yet.`)
-    } catch (e) { status(e.code === 4001 ? 'Signature cancelled. No submission was made.' : e.message || 'Submission failed. Please try again.') }
-    finally { busy = false; $('submit-entry').disabled = !wallet }
+    } catch (e) { status(e.code === 4001 ? 'Signature cancelled. No submission was made.' : e.code === -32002 ? 'A signature request is already waiting. Open your wallet and approve or cancel it before trying again.' : e.message || 'Submission failed. Please try again.') }
+    finally { busy = false; $('submit-entry').disabled = !wallet; $('submit-entry').textContent = 'Sign & submit for review' }
   })
 })()
