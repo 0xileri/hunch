@@ -82,6 +82,16 @@ export function claimAllocation(wallet: string) {
   return reward ? { amountHunch: reward.amountHunch, amountUsd: (reward.usdCents / 100).toFixed(2), status: reward.confirmed ? 'claimed' : reward.txHash ? 'processing' : 'approved', claimTx: reward.confirmed ? reward.txHash : null } : null
 }
 const challenges = new Map<string, { wallet: string; handle: string; amount: string; message: string; expires: number }>()
+export function checkClaimPair(body: unknown) {
+  const input = body as { wallet?: unknown; handle?: unknown }
+  if (typeof input.wallet !== 'string' || !isAddress(input.wallet) || typeof input.handle !== 'string') return fail('Connect your registered wallet and enter your X handle.')
+  const handle = input.handle.trim().replace(/^@/, '').toLowerCase()
+  if (!/^[a-z0-9_]{1,15}$/.test(handle)) return fail('Enter a valid registered X handle.')
+  const reward = campaign().rewards.find(r => r.wallet === (input.wallet as string).toLowerCase())
+  if (!reward) return fail('This wallet is not eligible for this airdrop.')
+  if (reward.handle !== handle) return fail('Wallet and X handle do not match. Use the X handle registered with this wallet.')
+  return { matches: true, handle, allocation: claimAllocation(reward.wallet) }
+}
 export function claimChallenge(body: unknown) {
   const input = body as { wallet?: unknown; handle?: unknown; follows?: unknown }
   if (!campaign().enabled) return fail('Claims are not open yet.')

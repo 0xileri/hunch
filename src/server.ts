@@ -25,7 +25,7 @@ import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
-import { claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, setClaimsEnabled } from './core/airdrop-claims.js'
+import { checkClaimPair, claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, setClaimsEnabled } from './core/airdrop-claims.js'
 
 const app = new Hono()
 app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
@@ -67,7 +67,7 @@ const airdropRate = new Map<string, { count: number; expiresAt: number }>()
 app.post('/api/airdrop/:action', async (c) => {
   c.header('cache-control', 'no-store')
   const action = c.req.param('action')
-  if (!['challenge', 'submit', 'claim-challenge', 'claim'].includes(action)) return c.notFound()
+  if (!['challenge', 'submit', 'claim-match', 'claim-challenge', 'claim'].includes(action)) return c.notFound()
   const origin = c.req.header('origin')
   if (origin && origin !== new URL(PUBLIC_URL).origin) return c.json({ error: 'Submit from Hunch’s official website.' }, 403)
   // Railway supplies this client address; no forwarded header is trusted for authorization.
@@ -82,6 +82,7 @@ app.post('/api/airdrop/:action', async (c) => {
     const raw = await c.req.text()
     if (raw.length > 12000) return c.json({ error: 'Submission is too large.' }, 413)
     const body = JSON.parse(raw)
+    if (action === 'claim-match') return c.json(checkClaimPair(body))
     if (action === 'claim-challenge') return c.json(claimChallenge(body))
     if (action === 'claim') return c.json(await executeClaim(body))
     return action === 'challenge' ? c.json(createAirdropChallenge(body)) : c.json(await submitAirdrop(body), 201)
