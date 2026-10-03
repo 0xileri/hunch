@@ -139,7 +139,7 @@
     $('claim-panel').hidden = !allocation || allocation.status === 'claimed'
     $('claim-reward').disabled = !claimsOpen || !allocation || busy
     if (allocation) {
-      $('claim-amount').textContent = `${allocation.amountHunch} $HUNCH${allocation.amountUsd ? ' · $' + allocation.amountUsd + ' allocation at the fixed campaign rate' : ''}`
+      $('claim-amount').textContent = `${allocation.amountHunch} $HUNCH${allocation.amountUsd ? ' · $' + allocation.amountUsd + ' allocation weight' : ''}`
       $('claim-reward').textContent = allocation.status === 'processing' ? 'Check claim' : 'Claim $HUNCH'
       if (allocation.status === 'processing') status('Your payout is awaiting confirmation. Enter your registered X handle and use Check claim to resume safely.')
       else if (allocation.status === 'approved') status(claimsOpen ? 'Your reward is ready. Enter your registered X handle and confirm you follow both accounts.' : 'Your reward is allocated. Claims open after the treasury is funded.')

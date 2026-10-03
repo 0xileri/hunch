@@ -11,7 +11,7 @@ import { publicClient, ROBINHOOD, transport } from '../chain/refuel.js'
 const fail = (message: string): never => { throw new AirdropError(message) }
 const abi = parseAbi(['function balanceOf(address) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)'])
 type Reward = { wallet: string; handle: string; usdCents: number; amountHunch: string; rawTx?: Hex; txHash?: Hex; confirmed?: boolean }
-type Campaign = { priceUsd: string; rewards: Reward[]; enabled: boolean }
+type Campaign = { priceUsd: string; totalHunch?: string; rewards: Reward[]; enabled: boolean }
 const campaign = () => readJson<Campaign>('airdrop-claim-allocations.json', { priceUsd: '', rewards: [], enabled: false })
 const account = () => {
   const saved = readJson<{ privateKey: Hex } | null>('airdrop-treasury-secret.json', null)
@@ -38,10 +38,14 @@ export async function claimTreasuryStatus() {
 // Fixed conversion and the entire reviewed USD ledger are installed together, before claims open.
 export function configureClaims(body: unknown) {
   if (executing) return fail('A claim is processing. Wait before changing configuration.')
-  const input = body as { priceUsd?: unknown; rewards?: unknown; enabled?: unknown }
+  const input = body as { priceUsd?: unknown; totalHunch?: unknown; rewards?: unknown; enabled?: unknown }
   const previous = campaign()
   if (previous.enabled || previous.rewards.some(r => r.txHash)) return fail('Close claims before configuration; allocations with transactions cannot change.')
-  if (typeof input.priceUsd !== 'string' || !/^\d{1,12}(\.\d{1,18})?$/.test(input.priceUsd) || parseUnits(input.priceUsd, 18) <= 0n) return fail('Provide a positive fixed USD price per HUNCH.')
+  let pool: bigint | undefined
+  if (input.totalHunch !== undefined) {
+    if (input.priceUsd !== undefined || typeof input.totalHunch !== 'string' || !/^\d{1,15}(\.\d{1,18})?$/.test(input.totalHunch) || parseUnits(input.totalHunch, 18) <= 0n) return fail('Provide a positive fixed HUNCH pool, without a price.')
+    pool = parseUnits(input.totalHunch, 18)
+  } else if (typeof input.priceUsd !== 'string' || !/^\d{1,12}(\.\d{1,18})?$/.test(input.priceUsd) || parseUnits(input.priceUsd, 18) <= 0n) return fail('Provide a positive fixed USD price per HUNCH.')
   if (!Array.isArray(input.rewards) || input.rewards.length !== 26) return fail('Provide the full 26-recipient reviewed allocation ledger.')
   const entries = airdropReviewEntries()
   const rewards: Reward[] = input.rewards.map((row: { handle?: unknown; usdCents?: unknown }) => {
@@ -51,13 +55,17 @@ export function configureClaims(body: unknown) {
     if (!entry || handle === 'mrlarry100x' || handle === 'mrbankalart') return fail('This account is not in the reviewed recipient list.')
     const exception = ['bywrny', '7teen_wtf'].includes(handle)
     if (exception ? row.usdCents !== 500 : row.usdCents < 1000 || !entry.posts.length || entry.status === 'rejected') return fail('Allocation does not match the base or reply exception rules.')
-    const atoms = BigInt(row.usdCents) * 10n ** 36n / (100n * parseUnits(input.priceUsd as string, 18))
+    const atoms = pool !== undefined ? pool * BigInt(row.usdCents) / 50000n : BigInt(row.usdCents) * 10n ** 36n / (100n * parseUnits(input.priceUsd as string, 18))
     if (atoms <= 0n) return fail('HUNCH allocation is too small.')
     return { wallet: entry.wallet, handle, usdCents: row.usdCents, amountHunch: formatUnits(atoms, 18) }
   })
   if (new Set(rewards.map(r => r.wallet)).size !== 26 || new Set(rewards.map(r => r.handle)).size !== 26 || rewards.reduce((sum, r) => sum + r.usdCents, 0) !== 50000) return fail('Allocations must be unique and total exactly 500 USD.')
-  writeJson('airdrop-claim-allocations.json', { priceUsd: input.priceUsd, rewards, enabled: false })
-  return { recipients: rewards.length, totalUsd: 500, priceUsd: input.priceUsd, claimsOpen: false }
+  if (pool !== undefined) {
+    const remainder = pool - rewards.reduce((sum, r) => sum + parseUnits(r.amountHunch, 18), 0n)
+    for (let i = 0; i < Number(remainder); i++) rewards[i].amountHunch = formatUnits(parseUnits(rewards[i].amountHunch, 18) + 1n, 18)
+  }
+  writeJson('airdrop-claim-allocations.json', { priceUsd: input.priceUsd ?? '', totalHunch: input.totalHunch, rewards, enabled: false })
+  return { recipients: rewards.length, allocationBasisUsd: 500, priceUsd: input.priceUsd, totalHunch: input.totalHunch, claimsOpen: false }
 }
 export async function setClaimsEnabled(enabled: unknown) {
   if (typeof enabled !== 'boolean') return fail('Provide enabled as a boolean.')

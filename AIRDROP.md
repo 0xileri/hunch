@@ -26,6 +26,8 @@ No new contract is deployed. Claims use server-sponsored ERC20 transfers from a 
 
 `POST /api/admin/airdrop/claims/enabled`: `{ "enabled": true }` opens claims only if the entire unpaid pool and positive ETH balance are present. The public challenge checks the original wallet and matching handle; the signed request confirms wallet ownership. Following @hunchmode and @_ValeriusX is a declaration with explicit follow links, not an X API verification.
 
+The operator selected an exact pool of **118,000,000 HUNCH** instead of a quoted token price. Configure with `totalHunch: "118000000"` in place of `priceUsd`; rewards use each recipient's share of the approved 50000-cent ledger. This means 236,000 HUNCH per allocation dollar, a 2,360,000 HUNCH base, and 1,180,000 HUNCH for each reply exception. USD values represent allocation weights and approximate campaign value, not guaranteed market value.
+
 The full signed transfer and its hash are persisted before broadcasting. Only one unresolved treasury transaction is allowed; retries rebroadcast that exact transfer so a response timeout or restart cannot issue a second payout. Failed receipts remain blocked for operator investigation rather than automatically issuing another transfer. Deploy exactly one app replica with the persistent volume; this JSON-backed implementation does not support multiple concurrent server replicas. A crashed request resumes when the same claimant signs a fresh request. Claimed cards reflect transferred HUNCH, not investment profit or loss.
 
 ## Reviewed supporter cards
