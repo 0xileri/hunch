@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 const source = readFileSync(new URL('../web/airdrop.js', import.meta.url), 'utf8')
 const wallet = '0x1234567890123456789012345678901234567890'
 
-async function scenario(mode, eligible = false) {
+async function scenario(mode, eligible = false, claimsOpen = false) {
   class Element {
     handlers = {}; children = []; value = ''; hidden = false; disabled = false; textContent = ''; open = false
     addEventListener(name, fn) { this.handlers[name] = fn }
@@ -15,11 +15,13 @@ async function scenario(mode, eligible = false) {
     close() { this.open = false }
     scrollIntoView() {}
     reportValidity() { return true }
+    getContext() { return new Proxy({}, { get: () => () => {} }) }
   }
   const elements = new Map()
   const get = id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id) }
   let onAccountsChanged
   let submissions = 0
+  let claimed = false
   const ethereum = {
     async request({ method }) {
       if (method === 'eth_requestAccounts') return [wallet]
@@ -35,8 +37,12 @@ async function scenario(mode, eligible = false) {
   const document = { getElementById: get, createElement: () => new Element() }
   const window = { ethereum, addEventListener() {}, dispatchEvent() {} }
   const fetch = async path => ({ ok: true, json: async () => {
-    if (path === '/api/airdrop') return { claimsOpen: false }
-    if (path.includes('/wallet/')) return { eligible, campaign: { claimsOpen: false }, submission: null, allocation: eligible ? { status: 'approved', amountHunch: '2360000' } : null }
+    const allocation = { status: claimed ? 'claimed' : 'approved', amountHunch: '210000', claimTx: claimed ? '0x' + '1'.repeat(64) : null }
+    if (path === '/api/airdrop') return { claimsOpen }
+    if (path.includes('/wallet/')) return { eligible, campaign: { claimsOpen }, submission: null, allocation: eligible ? allocation : null }
+    if (path.endsWith('/claim-match')) return { matches: true, handle: 'earlybacker', allocation }
+    if (path.endsWith('/claim-challenge')) return { id: 'claim', message: 'Test fixed reward' }
+    if (path.endsWith('/claim')) { claimed = true; return { status: 'claimed', allocation: { ...allocation, status: 'claimed', claimTx: '0x' + '1'.repeat(64) } } }
     if (path.endsWith('/challenge')) return { id: 'test', message: 'Test ownership' }
     if (path.endsWith('/submit')) { submissions++; return { verificationCode: 'HUNCH-TEST' } }
     throw Error('Unexpected endpoint')
@@ -60,7 +66,19 @@ async function scenario(mode, eligible = false) {
     assert.match(get('airdrop-status').textContent, mode === 'changed' ? /Wallet changed/ : mode === 'cancelled' ? /cancelled/ : /already waiting/)
     assert.equal(get('submit-entry').disabled, mode === 'changed')
   }
+  if (claimsOpen) {
+    get('claim-handle').value = '@earlybacker'
+    get('claim-follows').checked = true
+    await get('claim-reward').handlers.click()
+    assert.equal(claimed, true)
+    assert.equal(get('share-reward').open, true)
+    assert.equal(get('share-reward').hidden, false)
+    get('close-claim-card').handlers.click()
+    assert.equal(get('share-reward').open, false)
+    assert.equal(get('share-reward').hidden, true)
+  }
 }
 for (const mode of ['same', 'changed', 'cancelled', 'pending']) await scenario(mode)
 await scenario('same', true)
-console.log('Wallet checks passed: eligibility popup/claim control, eligible wallet without popup, same-account resume, account change and signature errors.')
+await scenario('same', true, true)
+console.log('Wallet checks passed: eligibility, account/signature handling, and automatic confirmed claim-card popup with close control.')

@@ -11,14 +11,17 @@
   let claimState = null
   const discovered = new Map()
   const status = text => { $('airdrop-status').textContent = text }
-  const reset = () => { wallet = null; eligible = null; matchedHandle = null; claimState = null; $('not-eligible').close(); $('claim-amount').textContent = ''; accountVersion++; $('submit-entry').disabled = true; $('claim-panel').hidden = false; $('claim-reward').disabled = false; $('claim-follows').checked = false; $('claim-handle').value = ''; $('share-reward').hidden = true; $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
+  const reset = () => { wallet = null; eligible = null; matchedHandle = null; claimState = null; $('not-eligible').close(); $('claim-amount').textContent = ''; accountVersion++; $('submit-entry').disabled = true; $('claim-panel').hidden = false; $('claim-reward').disabled = false; $('claim-follows').checked = false; $('claim-handle').value = ''; hideReward(); $('airdrop-form').hidden = false; $('wallet-state').textContent = 'Wallet changed. Connect again to continue.'; $('connect-wallet').textContent = 'Connect wallet'; status('') }
   // Mobile wallets can re-announce the same account on returning from a signature prompt.
   // Only invalidate a submission when the actual selected account changed or disappeared.
   const accountsChanged = accounts => {
     if (wallet && Array.isArray(accounts) && typeof accounts[0] === 'string' && accounts[0].toLowerCase() === wallet.toLowerCase()) return
     reset()
   }
-  function renderReward(result, address) {
+  function hideReward() { $('share-reward').close(); $('share-reward').hidden = true }
+  $('close-claim-card').addEventListener('click', hideReward)
+  $('share-reward').addEventListener('cancel', hideReward)
+  function renderReward(result, address, openPopup = false) {
     const allocation = result.allocation
     $('share-reward').hidden = true
     if (!allocation || allocation.status !== 'claimed' || !/^0x[0-9a-fA-F]{64}$/.test(allocation.claimTx || '') || !matchedHandle) return
@@ -47,7 +50,7 @@
     $('share-on-x').href='https://twitter.com/intent/tweet?text='+encodeURIComponent(text)+'&url='+encodeURIComponent(location.origin+'/airdrop')
     $('claim-receipt').hidden=false
     $('claim-receipt').href='https://robinhoodchain.blockscout.com/tx/'+allocation.claimTx
-    $('share-reward').hidden=false
+    if (openPopup) { $('share-reward').hidden=false; if (!$('share-reward').open) $('share-reward').showModal() }
   }
   $('download-card').addEventListener('click', () => {
     if ($('share-reward').hidden) return
@@ -174,7 +177,7 @@
     renderReward(result,expected)
     return result
   }
-  $('claim-handle').addEventListener('input',()=>{matchedHandle=null;$('share-reward').hidden=true;$('claim-handle-status').textContent=''})
+  $('claim-handle').addEventListener('input',()=>{matchedHandle=null;hideReward();$('claim-handle-status').textContent=''})
   $('claim-handle').addEventListener('blur',async()=>{if(!wallet || eligible!==true || !$('claim-handle').value.trim())return;try{await matchPair()}catch(error){$('claim-handle-status').textContent=error.message}})
   $('claim-reward').addEventListener('click',async()=>{
     if(busy)return
@@ -184,7 +187,7 @@
     busy=true;$('claim-reward').disabled=true
     try{
       const pair=await matchPair()
-      if(pair.allocation.status==='claimed'){status('Your reward is confirmed. Download your card below.');return}
+      if(pair.allocation.status==='claimed'){renderReward(pair,expected,true);status('Your reward is confirmed. Download or share your card.');return}
       if(!claimsOpen)throw new Error('Claims open after the full reward pool is funded. Your allocation is reserved.')
       if(!$('claim-follows').checked)throw new Error('Follow @hunchmode and @_ValeriusX, then tick the declaration.')
       status('Preparing your fixed reward claim…')
@@ -195,12 +198,19 @@
       const signature=await provider.request({method:'personal_sign',params:[messageHex,expected]})
       if(version!==accountVersion)throw new Error('Wallet changed. Reconnect your registered wallet.')
       status('Sending $HUNCH. Waiting for chain confirmation…')
-      const payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
+      let payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
+      for(let attempt=0;payout.status==='processing' && attempt<6 && version===accountVersion;attempt++){
+        status('Your payout is processing. Your card will open automatically after confirmation…')
+        await new Promise(resolve=>setTimeout(resolve,10000))
+        if(version!==accountVersion)return
+        payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
+      }
+      if(version===accountVersion && payout.status==='claimed')renderReward(payout,expected,true)
       if(version!==accountVersion)return
       const result=await api('/api/airdrop/wallet/'+encodeURIComponent(expected))
       if(version!==accountVersion)return
-      renderClaim(result);renderReward(result,expected)
-      status(payout.status==='claimed' ? 'Your $HUNCH is confirmed. Download your claim card below.' : payout.message)
+      renderClaim(result);if(payout.status!=='claimed' || !payout.allocation)renderReward(result,expected,payout.status==='claimed')
+      status(payout.status==='claimed' ? 'Your $HUNCH is confirmed. Download or share your claim card.' : payout.message)
     }catch(error){if(version===accountVersion){status(error.code===4001 ? 'Signature cancelled. No new payout requested.' : error.code===-32002 ? 'A signature request is waiting in your wallet.' : error.message);$('claim-handle-status').textContent=matchedHandle ? 'Wallet and @'+matchedHandle+' match.' : error.message}}
     finally{busy=false;$('claim-reward').disabled=!!wallet && eligible===false}
   })
