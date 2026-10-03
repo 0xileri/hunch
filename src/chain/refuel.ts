@@ -19,7 +19,10 @@ const RPC_URLS = (process.env.ROBINHOOD_RPC_URLS ?? 'https://rpc.mainnet.chain.r
   .split(',')
   .map((u) => u.trim())
   .filter(Boolean)
-export const transport = () => fallback(RPC_URLS.map((url) => http(url, { retryCount: 2, retryDelay: 800, timeout: 20_000 })))
+export const transport = (options: { timeout?: number; retryCount?: number } = {}) => fallback(
+  RPC_URLS.map((url) => http(url, { retryCount: options.retryCount ?? 2, retryDelay: 800, timeout: options.timeout ?? 20_000 })),
+  options.retryCount === undefined ? {} : { retryCount: options.retryCount },
+)
 
 export const ROBINHOOD = defineChain({
   id: 4663,

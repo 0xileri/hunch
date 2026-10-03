@@ -30,6 +30,10 @@ The operator corrected the intended exact pool to **10,500,000 HUNCH** on Octobe
 
 The full signed transfer and its hash are persisted before broadcasting. Only one unresolved treasury transaction is allowed; retries rebroadcast that exact transfer so a response timeout or restart cannot issue a second payout. Failed receipts remain blocked for operator investigation rather than automatically issuing another transfer. Deploy exactly one app replica with the persistent volume; this JSON-backed implementation does not support multiple concurrent server replicas. A crashed request resumes when the same claimant signs a fresh request. Claimed cards reflect transferred HUNCH, not investment profit or loss.
 
+Claim submission returns once broadcast is attempted instead of holding the HTTP request through six confirmations. Wallet status reads start a single shared, read-only receipt check; this recovers confirmed transfers after a lost response or restart and releases a previously confirmed treasury payout before the next claim. Recovery still requires six confirmations and the exact token/from/to/amount event. The response exposes the prepared transaction hash for a pending explorer link, while `claimTx` remains confirmation-only. Claim RPC calls use a four-second timeout per endpoint with no retry rounds.
+
+The browser checks wallet status every five seconds for up to 90 seconds, without repeating payout requests. HTTP requests time out after 25 seconds and wallet signature prompts after 60 seconds; timeouts restore the button and explain how to resume. A lost submission response first checks the stored wallet allocation. The claim-card popup opens only when the allocation is confirmed.
+
 ## Reviewed supporter cards
 
 Operator-only review endpoint: `POST /api/admin/airdrop/:id/review` with the existing bearer token and JSON `{ "status": "approved", "amountHunch": "1250.5" }`, or `{ "status": "rejected" }`. Only approve after verifying X ownership and content, finalizing the reward formula and conversion rate, and checking the total pool. This records an allocation; it does not transfer funds or open claims.

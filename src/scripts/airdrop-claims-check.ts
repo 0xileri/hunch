@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
-import { encodeAbiParameters, keccak256 } from 'viem'
+import { decodeFunctionData, encodeAbiParameters, keccak256, parseAbi, parseTransaction } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 
 const directory = mkdtempSync(join(tmpdir(), 'hunch-claims-'))
@@ -16,7 +16,13 @@ const rpc = createServer((request, response) => {
     const payload = JSON.parse(body)
     if (payload.method === 'eth_sendRawTransaction') broadcasts.push(payload.params[0])
     response.setHeader('content-type', 'application/json')
-    response.end(JSON.stringify({ jsonrpc: '2.0', id: payload.id, result: payload.method === 'eth_sendRawTransaction' ? keccak256(payload.params[0]) : '0x1237' }))
+    const result = payload.method === 'eth_sendRawTransaction' ? keccak256(payload.params[0])
+      : payload.method === 'eth_getBlockByNumber' ? { number: '0x69', hash: '0x' + '1'.repeat(64), baseFeePerGas: '0x3b9aca00', gasLimit: '0x1c9c380', gasUsed: '0x0', timestamp: '0x1', transactions: [] }
+      : payload.method === 'eth_estimateGas' ? '0xc350'
+      : payload.method === 'eth_getTransactionCount' ? '0x1'
+      : payload.method === 'eth_maxPriorityFeePerGas' || payload.method === 'eth_gasPrice' ? '0x3b9aca00'
+      : '0x1237'
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: payload.id, result }))
   })
 })
 await new Promise<void>(resolve => rpc.listen(0, '127.0.0.1', resolve))
@@ -26,7 +32,7 @@ const accounts = Array.from({ length: 26 }, () => privateKeyToAccount(generatePr
 const entries = accounts.map((account, i) => ({ id: String(i), wallet: account.address.toLowerCase(), handle: i === 24 ? 'bywrny' : i === 25 ? '7teen_wtf' : `backer${i}`, status: i > 23 ? 'rejected' : 'pending', posts: i > 23 ? [] : [{ id: String(i), url: '', publishedAt: '' }], verificationCode: '', submittedAt: '' }))
 writeFileSync(join(directory, 'airdrop-supporters.json'), JSON.stringify(entries))
 const claims = await import('../core/airdrop-claims.js')
-const { publicClient } = await import('../chain/refuel.js')
+const publicClient = claims.claimPublicClient
 const rewards = entries.map((entry, i) => ({ handle: entry.handle, usdCents: i === 0 ? 26000 : i > 23 ? 500 : 1000 }))
 try {
   const treasury = claims.initializeClaimTreasury()
@@ -67,19 +73,54 @@ try {
   config.rewards[0].rawTx = rawTx
   config.rewards[0].txHash = keccak256(rawTx)
   writeFileSync(join(directory, 'airdrop-claim-allocations.json'), JSON.stringify(config))
-  Object.assign(publicClient, { waitForTransactionReceipt: async () => { throw new Error('Timed out') } })
+  Object.assign(publicClient, { getTransactionReceipt: async () => { throw new Error('Not found') } })
   const pending = await claims.executeClaim({ id: challenge.id, signature })
   assert.equal(pending.status, 'processing')
   const next = claims.claimChallenge({ wallet: accounts[1].address, handle: 'backer1', follows: true })
   await assert.rejects(claims.executeClaim({ id: next.id, signature: await accounts[1].signMessage({ message: next.message }) }), /awaiting confirmation/)
   const topics = [keccak256(new TextEncoder().encode('Transfer(address,address,uint256)')), encodeAbiParameters([{ type: 'address' }], [treasury.address]), encodeAbiParameters([{ type: 'address' }], [accounts[0].address])]
-  Object.assign(publicClient, { waitForTransactionReceipt: async () => ({ status: 'success', logs: [{ address: '0x0976f3067dd97321b7ab269c5a2c290264f7046d', topics, data: encodeAbiParameters([{ type: 'uint256' }], [26000n * 10n ** 18n]) }] }) })
-  assert.equal((await claims.executeClaim({ id: challenge.id, signature })).status, 'claimed')
-  assert.deepEqual(broadcasts, [rawTx, rawTx])
+  Object.assign(publicClient, { getBlockNumber: async () => 104n, getTransactionReceipt: async () => ({ blockNumber: 100n, status: 'success', logs: [{ address: '0x0976f3067dd97321b7ab269c5a2c290264f7046d', topics, data: encodeAbiParameters([{ type: 'uint256' }], [26000n * 10n ** 18n]) }] }) })
+  await claims.refreshClaimSettlements()
+  assert.equal(claims.claimAllocation(accounts[0].address)?.status, 'processing', 'Five confirmations cannot unlock a claim card')
+  assert.equal(claims.claimAllocation(accounts[0].address)?.claimTx, null)
+  assert.equal(claims.claimAllocation(accounts[0].address)?.transactionHash, keccak256(rawTx))
+  Object.assign(publicClient, { getBlockNumber: async () => 105n })
+  // A status check alone must recover the completed transfer; the original claimant need not sign again.
+  await claims.refreshClaimSettlements()
+  assert.deepEqual(broadcasts, [rawTx], 'Receipt recovery must never broadcast another payment')
   assert.equal(claims.claimAllocation(accounts[0].address)?.status, 'claimed')
-  await assert.rejects(claims.executeClaim({ id: challenge.id, signature }), /expired/)
+  await assert.rejects(claims.executeClaim({ id: challenge.id, signature }), /already claimed/)
   assert.throws(() => claims.claimChallenge({ wallet: accounts[0].address, handle: 'backer0', follows: true }), /already/)
+  // Exercise preparation, persistence and broadcast of a new payment on the local RPC.
+  Object.assign(publicClient, { readContract: async () => 50000n * 10n ** 18n, getTransactionReceipt: async () => { throw new Error('Not found') }, simulateContract: async () => ({ request: { address: '0x0976f3067dd97321b7ab269c5a2c290264f7046d' }, result: true }) })
+  const fresh = claims.claimChallenge({ wallet: accounts[2].address, handle: 'backer2', follows: true })
+  const freshSignature = await accounts[2].signMessage({ message: fresh.message })
+  assert.equal((await claims.executeClaim({ id: fresh.id, signature: freshSignature })).status, 'processing')
+  const persisted = JSON.parse(readFileSync(join(directory, 'airdrop-claim-allocations.json'), 'utf8')).rewards[2]
+  const signed = parseTransaction(persisted.rawTx)
+  assert.equal(signed.chainId, 4663)
+  assert.equal(signed.to?.toLowerCase(), '0x0976f3067dd97321b7ab269c5a2c290264f7046d')
+  const transfer = decodeFunctionData({ abi: parseAbi(['function transfer(address to, uint256 amount) returns (bool)']), data: signed.data! })
+  assert.equal(transfer.args[0].toLowerCase(), accounts[2].address.toLowerCase())
+  assert.equal(transfer.args[1], 1000n * 10n ** 18n)
+  assert.equal(persisted.txHash, keccak256(persisted.rawTx))
+  await claims.executeClaim({ id: fresh.id, signature: freshSignature })
+  assert.deepEqual(broadcasts.slice(1), [persisted.rawTx, persisted.rawTx], 'A retry must reuse the durably signed transaction')
   await claims.setClaimsEnabled(false)
   await assert.rejects(claims.executeClaim({ id: next.id, signature: await accounts[1].signMessage({ message: next.message }) }), /not open/)
-  console.log('Claim checks passed: durable treasury, ledger totals/conversion, wallet/handle/follow/signature checks, funding gates, crash-safe exact-transaction retries, pending-transfer serialization, confirmed events and replay rejection. Only a local mock RPC was used.')
+  // An exact-amount mismatch stays unclaimed and cannot silently unblock the treasury.
+  // Confirmation recovery remains available after an operator closes new claims.
+  const freshTopics = [topics[0], topics[1], encodeAbiParameters([{ type: 'address' }], [accounts[2].address])]
+  Object.assign(publicClient, { getTransactionReceipt: async () => ({ blockNumber: 100n, status: 'success', logs: [{ address: signed.to, topics: freshTopics, data: encodeAbiParameters([{ type: 'uint256' }], [1000n * 10n ** 18n]) }] }) })
+  await claims.refreshClaimSettlements()
+  assert.equal(claims.claimAllocation(accounts[2].address)?.status, 'claimed')
+  assert.equal(claims.claimCampaignStatus().claimsOpen, false)
+  const mismatch = JSON.parse(readFileSync(join(directory, 'airdrop-claim-allocations.json'), 'utf8'))
+  mismatch.rewards[1].rawTx = '0xcafe'
+  mismatch.rewards[1].txHash = keccak256('0xcafe')
+  writeFileSync(join(directory, 'airdrop-claim-allocations.json'), JSON.stringify(mismatch))
+  await claims.refreshClaimSettlements()
+  assert.equal(claims.claimAllocation(accounts[1].address)?.status, 'processing')
+  assert.match(claims.claimAllocation(accounts[1].address)?.message ?? '', /exact reward/)
+  console.log('Claim checks passed: durable exact-transaction retry, read-only confirmation recovery, six-confirmation gate, matching token event/amount, pending serialization, wallet/handle/signature checks and replay rejection. Only a local mock RPC was used.')
 } finally { rpc.closeAllConnections(); rpc.close(); rmSync(directory, { recursive: true, force: true }) }

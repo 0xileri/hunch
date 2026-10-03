@@ -25,7 +25,7 @@ import { AIRDROP_JS, airdropPage } from './web/airdrop.js'
 import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web/site.js'
 import { withSiteNavigation } from './web/navigation.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
-import { checkClaimPair, claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, setClaimsEnabled } from './core/airdrop-claims.js'
+import { checkClaimPair, claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, refreshClaimSettlements, setClaimsEnabled } from './core/airdrop-claims.js'
 
 const app = new Hono()
 app.use('/api/airdrop/*', bodyLimit({ maxSize: 12000, onError: (c) => c.json({ error: 'Submission is too large.' }, 413) }))
@@ -60,6 +60,7 @@ app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/ja
 app.get('/api/airdrop', (c) => { c.header('cache-control', 'no-store'); return c.json({ ...AIRDROP, ...claimCampaignStatus() }) })
 app.get('/api/airdrop/wallet/:wallet', (c) => {
   c.header('cache-control', 'no-store')
+  void refreshClaimSettlements()
   try { const result = airdropStatus(c.req.param('wallet')); const reward = claimAllocation(c.req.param('wallet')); return c.json({ ...result, eligible: !!reward, campaign: { ...AIRDROP, ...claimCampaignStatus() }, allocation: reward ?? result.allocation }) }
   catch (err) { return c.json({ error: failure(err) }, 400) }
 })
@@ -89,7 +90,7 @@ app.post('/api/airdrop/:action', async (c) => {
   } catch (err) {
     if (err instanceof AirdropError || err instanceof SyntaxError) return c.json({ error: failure(err) }, 400)
     console.error('Airdrop submission failed', err)
-    return c.json({ error: 'Unable to save your submission. Please try again.' }, 500)
+    return c.json({ error: action === 'claim' ? 'Unable to submit the claim right now. Check your claim again to resume safely.' : 'Unable to save your submission. Please try again.' }, 500)
   }
 })
 app.get('/api/admin/airdrop/entries', (c) => {

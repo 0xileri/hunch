@@ -61,11 +61,50 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     }, 'image/png')
   })
-  const api = async (url, body) => {
-    const res = await fetch(url, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {})
-    const json = await res.json()
-    if (!res.ok) throw new Error(json.error || 'Request failed. Try again.')
-    return json
+  const api = async (url, body, timeout = 25000) => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
+    try {
+      const res = await fetch(url, { ...(body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}), signal: controller.signal })
+      const json = await res.json()
+      if (!res.ok) { const error=new Error(json.error || 'Request failed. Try again.');error.serverResponse=true;throw error }
+      return json
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error('The network is taking too long. Check your claim again; an existing payout will not be sent twice.')
+      throw error
+    } finally { clearTimeout(timer) }
+  }
+  async function signReward(messageHex, address) {
+    let timer
+    try {
+      return await Promise.race([
+        provider.request({method:'personal_sign',params:[messageHex,address]}),
+        new Promise((_, reject) => { timer=setTimeout(()=>reject(new Error('Still waiting for your wallet signature. Open your wallet app or extension to approve or cancel it, then check your claim again.')),60000) }),
+      ])
+    } finally { clearTimeout(timer) }
+  }
+  function pendingReceipt(allocation) {
+    const link=$('claim-pending-receipt'),hash=allocation?.transactionHash
+    link.hidden=!/^0x[0-9a-fA-F]{64}$/.test(hash || '') || allocation?.status==='claimed'
+    if(!link.hidden)link.href='https://robinhoodchain.blockscout.com/tx/'+hash
+  }
+  async function watchClaim(expected, version) {
+    const deadline=Date.now()+90000
+    for(let attempt=0;attempt<18 && version===accountVersion && Date.now()<deadline;attempt++) {
+      const result=await api('/api/airdrop/wallet/'+encodeURIComponent(expected),null,Math.min(25000,deadline-Date.now()))
+      if(version!==accountVersion)return
+      renderClaim(result)
+      if(result.allocation?.status==='claimed') {
+        renderReward(result,expected,true)
+        status('Your $HUNCH is confirmed. Download or share your claim card.')
+        return
+      }
+      if(result.allocation?.message)throw new Error(result.allocation.message)
+      $('claim-reward').textContent=result.allocation?.transactionHash ? 'Confirming on chain…' : 'Checking your claim…'
+      status(result.allocation?.transactionHash ? 'Your claim transaction is awaiting confirmation. Checking every 5 seconds. Your card will open automatically.' : 'Checking whether your claim was submitted. Please keep this page open.')
+      await new Promise(resolve=>setTimeout(resolve,Math.max(0,Math.min(5000,deadline-Date.now()))))
+    }
+    if(version===accountVersion)status('Confirmation is taking longer than usual. Use Check claim to resume safely. Your reward will not be sent twice.')
   }
   const walletMessage = text => { $('wallet-picker-status').textContent = text; $('wallet-state').textContent = text }
   function walletError(e) {
@@ -155,9 +194,10 @@
     $('claim-state').textContent=claimsOpen ? 'Claims open' : 'Preparing'
     $('claim-state-detail').textContent=claimsOpen ? 'Your reward is ready' : 'Waiting for full pool funding'
     const allocation=result.allocation
+    pendingReceipt(allocation)
     if(allocation && wallet) claimState=allocation.status
     $('claim-panel').hidden=false
-    $('claim-reward').disabled=!!wallet && eligible===false
+    $('claim-reward').disabled=busy || !!wallet && eligible===false
     $('claim-note').textContent='Sign your fixed reward request. No wallet payment or token approval. The treasury covers gas.'
     if(allocation){
       $('claim-amount').textContent=allocation.amountHunch+' $HUNCH'
@@ -178,41 +218,42 @@
     return result
   }
   $('claim-handle').addEventListener('input',()=>{matchedHandle=null;hideReward();$('claim-handle-status').textContent=''})
-  $('claim-handle').addEventListener('blur',async()=>{if(!wallet || eligible!==true || !$('claim-handle').value.trim())return;try{await matchPair()}catch(error){$('claim-handle-status').textContent=error.message}})
+  $('claim-handle').addEventListener('blur',async()=>{if(busy || !wallet || eligible!==true || !$('claim-handle').value.trim())return;try{await matchPair()}catch(error){$('claim-handle-status').textContent=error.message}})
   $('claim-reward').addEventListener('click',async()=>{
     if(busy)return
     if(wallet && eligible===false){$('not-eligible').showModal();return}
     if(!wallet || !provider){$('connect-wallet').click();return}
     const expected=wallet,version=accountVersion
-    busy=true;$('claim-reward').disabled=true
+    busy=true;$('claim-reward').disabled=true;$('claim-handle').disabled=true
     try{
+      $('claim-reward').textContent='Checking wallet and X handle…'
       const pair=await matchPair()
       if(pair.allocation.status==='claimed'){renderReward(pair,expected,true);status('Your reward is confirmed. Download or share your card.');return}
       if(!claimsOpen)throw new Error('Claims open after the full reward pool is funded. Your allocation is reserved.')
       if(!$('claim-follows').checked)throw new Error('Follow @hunchmode and @_ValeriusX, then tick the declaration.')
       status('Preparing your fixed reward claim…')
+      $('claim-reward').textContent='Preparing claim…'
       const challenge=await api('/api/airdrop/claim-challenge',{wallet:expected,handle:matchedHandle,follows:true})
       if(version!==accountVersion)throw new Error('Wallet changed. Reconnect your registered wallet.')
       const messageHex='0x'+Array.from(new TextEncoder().encode(challenge.message)).map(byte=>byte.toString(16).padStart(2,'0')).join('')
       status('Sign your reward request in your wallet. No payment or token approval is required.')
-      const signature=await provider.request({method:'personal_sign',params:[messageHex,expected]})
+      $('claim-reward').textContent='Approve in your wallet…'
+      const signature=await signReward(messageHex,expected)
       if(version!==accountVersion)throw new Error('Wallet changed. Reconnect your registered wallet.')
-      status('Sending $HUNCH. Waiting for chain confirmation…')
-      let payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
-      for(let attempt=0;payout.status==='processing' && attempt<6 && version===accountVersion;attempt++){
-        status('Your payout is processing. Your card will open automatically after confirmation…')
-        await new Promise(resolve=>setTimeout(resolve,10000))
+      status('Submitting your $HUNCH claim…')
+      $('claim-reward').textContent='Submitting claim…'
+      try {
+        const payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
         if(version!==accountVersion)return
-        payout=await api('/api/airdrop/claim',{id:challenge.id,signature})
+        if(payout.allocation)pendingReceipt(payout.allocation)
+      } catch(error) {
+        if(error.serverResponse)throw error
+        // A timed-out response does not mean the server failed to send the reward.
+        status('The response was interrupted. Checking your wallet’s claim status before retrying…')
       }
-      if(version===accountVersion && payout.status==='claimed')renderReward(payout,expected,true)
-      if(version!==accountVersion)return
-      const result=await api('/api/airdrop/wallet/'+encodeURIComponent(expected))
-      if(version!==accountVersion)return
-      renderClaim(result);if(payout.status!=='claimed' || !payout.allocation)renderReward(result,expected,payout.status==='claimed')
-      status(payout.status==='claimed' ? 'Your $HUNCH is confirmed. Download or share your claim card.' : payout.message)
+      await watchClaim(expected,version)
     }catch(error){if(version===accountVersion){status(error.code===4001 ? 'Signature cancelled. No new payout requested.' : error.code===-32002 ? 'A signature request is waiting in your wallet.' : error.message);$('claim-handle-status').textContent=matchedHandle ? 'Wallet and @'+matchedHandle+' match.' : error.message}}
-    finally{busy=false;$('claim-reward').disabled=!!wallet && eligible===false}
+    finally{busy=false;$('claim-handle').disabled=false;$('claim-reward').disabled=!!wallet && eligible===false;$('claim-reward').textContent=claimState==='claimed' ? 'View claim card' : claimState==='processing' ? 'Check claim' : 'Claim $HUNCH'}
   })
   $('open-metamask').href = `https://metamask.app.link/dapp/${location.host}/airdrop`
   $('open-trust').href = `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(pageUrl)}`

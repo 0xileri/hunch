@@ -1,17 +1,20 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createWalletClient, decodeEventLog, formatUnits, isAddress, keccak256, parseAbi, parseUnits, verifyMessage, type Address, type Hex } from 'viem'
+import { createPublicClient, createWalletClient, decodeEventLog, formatUnits, isAddress, keccak256, parseAbi, parseUnits, verifyMessage, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { AIRDROP, AirdropError, airdropReviewEntries } from './airdrop.js'
 import { DATA_DIR, readJson, writeJson } from './store.js'
 import { PUBLIC_URL } from '../config.js'
-import { publicClient, ROBINHOOD, transport } from '../chain/refuel.js'
+import { ROBINHOOD, transport } from '../chain/refuel.js'
 
 const fail = (message: string): never => { throw new AirdropError(message) }
 const abi = parseAbi(['function balanceOf(address) view returns (uint256)', 'function transfer(address to, uint256 amount) returns (bool)'])
-type Reward = { wallet: string; handle: string; usdCents: number; amountHunch: string; rawTx?: Hex; txHash?: Hex; confirmed?: boolean }
+type Reward = { wallet: string; handle: string; usdCents: number; amountHunch: string; rawTx?: Hex; txHash?: Hex; confirmed?: boolean; payoutError?: string }
 type Campaign = { priceUsd: string; totalHunch?: string; rewards: Reward[]; enabled: boolean }
+// Claim requests must fail over quickly instead of spending minutes retrying an RPC.
+const claimTransport = () => transport({ timeout: 4000, retryCount: 0 })
+export const claimPublicClient = createPublicClient({ chain: ROBINHOOD, transport: claimTransport() })
 const campaign = () => readJson<Campaign>('airdrop-claim-allocations.json', { priceUsd: '', rewards: [], enabled: false })
 const account = () => {
   const saved = readJson<{ privateKey: Hex } | null>('airdrop-treasury-secret.json', null)
@@ -29,8 +32,8 @@ export async function claimTreasuryStatus() {
   if (!treasury) return { address: null, funded: false }
   const config = campaign()
   const [balance, gas] = await Promise.all([
-    publicClient.readContract({ address: AIRDROP.token as Address, abi, functionName: 'balanceOf', args: [treasury.address] }),
-    publicClient.getBalance({ address: treasury.address }),
+    claimPublicClient.readContract({ address: AIRDROP.token as Address, abi, functionName: 'balanceOf', args: [treasury.address] }),
+    claimPublicClient.getBalance({ address: treasury.address }),
   ])
   const owed = config.rewards.filter(r => !r.confirmed).reduce((sum, r) => sum + parseUnits(r.amountHunch, 18), 0n)
   return { address: treasury.address, balanceHunch: formatUnits(balance, 18), requiredHunch: formatUnits(owed, 18), gasEth: formatUnits(gas, 18), funded: owed > 0n && balance >= owed && gas > 0n, enabled: config.enabled }
@@ -79,7 +82,45 @@ export function claimCampaignStatus() { return { claimsOpen: campaign().enabled,
 export function claimAllocation(wallet: string) {
   const config = campaign()
   const reward = config.rewards.find(r => r.wallet === wallet.toLowerCase())
-  return reward ? { amountHunch: reward.amountHunch, amountUsd: (reward.usdCents / 100).toFixed(2), status: reward.confirmed ? 'claimed' : reward.txHash ? 'processing' : 'approved', claimTx: reward.confirmed ? reward.txHash : null } : null
+  return reward ? { amountHunch: reward.amountHunch, amountUsd: (reward.usdCents / 100).toFixed(2), status: reward.confirmed ? 'claimed' : reward.txHash ? 'processing' : 'approved', claimTx: reward.confirmed ? reward.txHash : null, transactionHash: reward.txHash ?? null, message: reward.payoutError ?? null } : null
+}
+let settling: Promise<void> | null = null
+async function settlePendingClaim() {
+  const reward = campaign().rewards.find(r => r.txHash && !r.confirmed && !r.payoutError)
+  if (!reward) return
+  const treasury = account()
+  if (!treasury) return
+  const receipt = await claimPublicClient.getTransactionReceipt({ hash: reward.txHash! }).catch(() => null)
+  if (!receipt) return
+  const block = await claimPublicClient.getBlockNumber({ cacheTime: 0 })
+  if (block < receipt.blockNumber + 5n) return
+  let error: string | undefined
+  if (receipt.status !== 'success') error = 'The payout failed on chain. Contact @hunchmode; no reward has been marked claimed.'
+  else {
+    const events = parseAbi(['event Transfer(address indexed from, address indexed to, uint256 value)'])
+    let received = 0n
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== AIRDROP.token.toLowerCase()) continue
+      try {
+        const event = decodeEventLog({ abi: events, data: log.data, topics: log.topics })
+        if (event.args.from.toLowerCase() === treasury.address.toLowerCase() && event.args.to.toLowerCase() === reward.wallet) received += event.args.value
+      } catch { /* Ignore unrelated logs. */ }
+    }
+    if (received !== parseUnits(reward.amountHunch, 18)) error = 'The receipt does not prove the exact reward transfer. Contact @hunchmode.'
+  }
+  // Read again after RPC work so an operator closing claims is never overwritten.
+  const config = campaign()
+  const current = config.rewards.find(r => r.wallet === reward.wallet && r.txHash === reward.txHash && !r.confirmed)
+  if (!current) return
+  if (error) current.payoutError = error
+  else current.confirmed = true
+  writeJson('airdrop-claim-allocations.json', config)
+}
+// Wallet status checks recover confirmations even after a lost response or server restart.
+// Only one receipt check runs at a time, and it never signs or broadcasts a transfer.
+export function refreshClaimSettlements(): Promise<void> {
+  if (!settling) settling = settlePendingClaim().catch(() => undefined).finally(() => { settling = null })
+  return settling
 }
 const challenges = new Map<string, { wallet: string; handle: string; amount: string; message: string; expires: number }>()
 export function checkClaimPair(body: unknown) {
@@ -118,6 +159,7 @@ export async function executeClaim(body: unknown) {
   if (executing) return fail('Another payout is processing. Try again shortly.')
   executing = true
   try {
+    await refreshClaimSettlements()
     const config = campaign()
     if (!config.enabled) return fail('Claims are not open yet.')
     const reward = config.rewards.find(r => r.wallet === challenge.wallet && r.handle === challenge.handle && r.amountHunch === challenge.amount)
@@ -125,38 +167,29 @@ export async function executeClaim(body: unknown) {
     // Never allocate a new nonce while any durable transfer remains unresolved, including after restart.
     const pending = config.rewards.find(r => r.txHash && !r.confirmed)
     if (pending && pending !== reward) return fail('A treasury payout is awaiting confirmation. Try again shortly.')
+    if (reward.payoutError) return fail(reward.payoutError)
     const treasury = account()
     if (!treasury) return fail('The airdrop treasury is not configured.')
-    const client = createWalletClient({ account: treasury, chain: ROBINHOOD, transport: transport() })
+    const client = createWalletClient({ account: treasury, chain: ROBINHOOD, transport: claimTransport() })
     if (!reward.rawTx) {
-      const balance = await publicClient.readContract({ address: AIRDROP.token as Address, abi, functionName: 'balanceOf', args: [treasury.address] })
+      const balance = await claimPublicClient.readContract({ address: AIRDROP.token as Address, abi, functionName: 'balanceOf', args: [treasury.address] })
       const amount = parseUnits(reward.amountHunch, 18)
       if (balance < amount) return fail('Treasury funding is not yet sufficient. Try again later.')
-      const { request, result } = await publicClient.simulateContract({ account: treasury, address: AIRDROP.token as Address, abi, functionName: 'transfer', args: [reward.wallet as Address, amount] })
+      const { request, result } = await claimPublicClient.simulateContract({ account: treasury, address: AIRDROP.token as Address, abi, functionName: 'transfer', args: [reward.wallet as Address, amount] })
       if (result !== true) return fail('The token transfer could not be simulated.')
       const prepared = await client.prepareTransactionRequest({ to: request.address, data: (await import('viem')).encodeFunctionData({ abi, functionName: 'transfer', args: [reward.wallet as Address, amount] }) })
       reward.rawTx = await client.signTransaction(prepared)
       reward.txHash = keccak256(reward.rawTx)
-      writeJson('airdrop-claim-allocations.json', config)
+      const saved = campaign()
+      const current = saved.rewards.find(r => r.wallet === reward.wallet && r.amountHunch === reward.amountHunch)
+      if (!saved.enabled || !current || current.txHash) return fail('Claims changed during preparation. Check your claim again.')
+      current.rawTx = reward.rawTx
+      current.txHash = reward.txHash
+      writeJson('airdrop-claim-allocations.json', saved)
     }
     // Retries broadcast the exact same signed transfer, never a second payout.
     await client.sendRawTransaction({ serializedTransaction: reward.rawTx }).catch(() => undefined)
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: reward.txHash!, confirmations: 6, timeout: 45000 }).catch(() => null)
-    if (!receipt) return { status: 'processing', message: 'Your payout is awaiting confirmation. Use Check claim to resume safely.' }
-    if (receipt.status !== 'success') return fail('The payout failed on chain. Contact @hunchmode; no reward has been marked claimed.')
-    const events = parseAbi(['event Transfer(address indexed from, address indexed to, uint256 value)'])
-    let received = 0n
-    for (const log of receipt.logs) {
-      if (log.address.toLowerCase() !== AIRDROP.token.toLowerCase()) continue
-      try {
-        const event = decodeEventLog({ abi: events, data: log.data, topics: log.topics })
-        if (event.args.from.toLowerCase() === treasury.address.toLowerCase() && event.args.to.toLowerCase() === reward.wallet) received += event.args.value
-      } catch { /* Ignore unrelated logs. */ }
-    }
-    if (received !== parseUnits(reward.amountHunch, 18)) return fail('The receipt does not prove the exact reward transfer. Contact @hunchmode.')
-    reward.confirmed = true
-    writeJson('airdrop-claim-allocations.json', config)
-    challenges.delete(input.id)
-    return { status: 'claimed', allocation: claimAllocation(reward.wallet) }
+    void refreshClaimSettlements()
+    return { status: 'processing', allocation: claimAllocation(reward.wallet), message: 'Your payout was submitted. Checking chain confirmations; your card will open automatically.' }
   } finally { executing = false }
 }
