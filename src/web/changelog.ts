@@ -12,6 +12,11 @@ export interface Change {
 
 export const CHANGES: Change[] = [
   {
+    date: '2026-10-04',
+    title: 'Watches become a project directory',
+    body: ['The Watches page now uses compact project cards, status filters and search. Active projects appear first; pending requests and demo or test fixtures have their own views.', 'Funding counts now include only watches with a funded budget. Console controls are removed from the directory, and each card opens its watch workspace.'],
+  },
+  {
     date: '2026-10-03',
     title: 'From a watch to a readable investigation',
     body: [

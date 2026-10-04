@@ -20,6 +20,7 @@
     "airdrop:check": "tsx src/scripts/airdrop-check.ts",
     "wallet:check": "node src/scripts/wallet-submit-check.mjs",
     "watch-flow:check": "node src/scripts/watch-flow-check.mjs",
+    "watch-directory:check": "node src/scripts/watch-directory-check.mjs",
     "report:check": "tsx src/scripts/investigation-report-check.ts",
     "pay:build": "tsx src/scripts/pay-build.ts",
     "pay:deploy": "tsx src/scripts/pay-deploy.ts",

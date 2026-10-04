@@ -443,7 +443,7 @@
   /** What the agent has been paid to watch, and what each watch has left to spend. */
   function renderWatches() {
     const list = S.watches || []
-    const paid = list.filter((w) => !w.house)
+    const paid = list.filter((w) => !w.house && w.budget.budgetUsd > 0)
     const money = paid.reduce((sum, w) => sum + w.budget.budgetUsd, 0)
     const row = (w) => {
       const b = w.budget
@@ -455,7 +455,7 @@
         <div class="role">${usd(b.spentUsd, 4)} spent of ${usd(b.budgetUsd, 2)}${w.investigations ? ` · ${w.investigations} investigation${w.investigations > 1 ? 's' : ''}` : ''}${w.expiresAt ? ` · until ${w.expiresAt.slice(0, 10)}` : ''}</div>
       </li>`
     }
-    set('watches', `<h2>Watches <span class="right mono" style="font-size:.75rem">${paid.length} paid</span></h2>
+    set('watches', `<h2>Watches <span class="right mono" style="font-size:.75rem">${paid.length} funded</span></h2>
       <ul class="workers">${list.map(row).join('')}</ul>
       ${
         S.watchPolicy && S.watchPolicy.contract

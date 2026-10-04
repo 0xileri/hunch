@@ -26,6 +26,7 @@ import { sitePage, howItWorksPage, SECTION_PAGES, type SectionPage } from './web
 import { withSiteNavigation } from './web/navigation.js'
 import { investigationPage, investigationReport, reportIsRunning, REPORT_JS } from './web/investigation-page.js'
 import { investigationHistory, HISTORY_JS } from './web/investigation-history.js'
+import { watchCategory, WATCH_LIST_JS } from './web/watch-directory.js'
 import { AIRDROP, AirdropError, airdropReviewEntries, airdropStatus, confirmAirdropPayout, createAirdropChallenge, excludeAirdropPosts, reviewAirdrop, submitAirdrop } from './core/airdrop.js'
 import { checkClaimPair, claimAllocation, claimCampaignStatus, claimChallenge, claimTreasuryStatus, configureClaims, executeClaim, initializeClaimTreasury, refreshClaimSettlements, setClaimsEnabled } from './core/airdrop-claims.js'
 
@@ -50,6 +51,8 @@ const publicWatch = (w: Watch) => ({
   expiresAt: w.expiresAt,
   budget: budgetOf(w),
   payments: w.payments,
+  investigations: state.investigations.filter(inv => inv.watchId === w.id).length,
+  category: watchCategory(w),
 })
 
 app.get('/', (c) => c.html(sitePage()))
@@ -63,6 +66,7 @@ app.get('/investigations/:id', (c) => {
 })
 app.get('/investigation-report.js', (c) => c.body(REPORT_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
 app.get('/investigation-list.js', (c) => c.body(HISTORY_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
+app.get('/watch-list.js', (c) => c.body(WATCH_LIST_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
 app.get('/changelog', (c) => c.html(withSiteNavigation(changelogPage(), '/changelog')))
 app.get('/airdrop', (c) => c.html(withSiteNavigation(airdropPage(), '/airdrop')))
 app.get('/airdrop.js', (c) => c.body(AIRDROP_JS, 200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' }))
@@ -249,7 +253,7 @@ app.get('/api/watch/:id', async (c) => {
   })
 })
 
-app.get('/api/watches', (c) => c.json(watches().map(publicWatch)))
+app.get('/api/watches', (c) => { c.header('cache-control', 'no-store'); return c.json(watches().map(publicWatch)) })
 
 // Scanning is free, so anyone may ask for one, but not more than once a minute.
 let lastPublicScan = 0
